@@ -71,7 +71,9 @@ def install(game, src):
     orig = _originals(update)
     ofs, bin_ = (open(os.path.join(orig, n), 'rb').read() for n in NAMES)
     files = {}
-    for name in sorted(os.listdir(src)):
+    names = sorted(os.path.relpath(os.path.join(r, f), src).replace(os.sep, '/')
+                   for r, _, fs in os.walk(src) for f in fs)
+    for name in names:                          # a file in a folder: under the key of its path (ric/alo/x.alo)
         path = os.path.join(src, name)
         if os.path.isfile(path):
             key = int(name[4:12], 16) if re.fullmatch(r'key_[0-9a-fA-F]{8}\.bin', name) else key_of(name)

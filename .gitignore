@@ -11,3 +11,6 @@ proton/*
 !proton/drive.py
 !proton/route_marduk.sh
 !proton/guestmem.py
+!proton/route_rick.sh
+!proton/route.py
+!proton/ref/

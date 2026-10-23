@@ -63,3 +63,17 @@ docs/ARCHITECTURE.md "Added fighters"). For Versus/Practice with a team includin
 
 Each Wii U function's 360 counterpart is found from the data it touches (as the record accessors were) and checked
 with the trace hooks.
+
+## Status (2026-10-23)
+
+Working (`TTT2_RICK=1`, `recomp/runtime/rick_slot.cpp`, files from `ttt2rick.convert.slot`): Rick has his own cell
+(top row, right of Violet, in the 62-cell grids of modes 1 and 2), internal id 64, records 140/141, motion row 58,
+code `ric` registered in the key registry and chara master. Practice: Rick (picked from his cell) vs Marduk loads and
+fights; Rick uses Marduk's moveset. Overrides so far: the chara master/registry builders (`sub_82468AD0`,
+`sub_8246A054`), the record accessors, the per-id record lists, the pick gate (`sub_82276760`), the player set-up
+(`sub_82276628`), the pick (`sub_8227DC40`, which tests the id's bit in a 64-bit mask), the loader's code read
+(`sub_82331B50`) and a 63-bit bitset (`sub_82554F08`).
+
+Still open: the select screen shows Marduk's portrait/name for Rick's cell (UI tables by id), a few bounds asserts
+during the fight load are ignored by the runtime (`sub_8255C108`, `sub_82584ED0`, `sub_8225D460`: tables indexed
+by id, to answer with Marduk's row), tag teams with Rick + Marduk not yet tried, voice is Marduk's.
