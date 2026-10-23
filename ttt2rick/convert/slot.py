@@ -1,10 +1,11 @@
 """Rick's files for his own roster slot (recomp/runtime/rick_slot.cpp, TTT2_RICK=1), for ttt2rick.ttt2.overlay.
 
-python -m ttt2rick.convert.slot <game folder> <converted Rick (ttt2rick.convert.rick's out dir)> <out dir>
+python -m ttt2rick.convert.slot <game folder> <converted Rick (ttt2rick.convert.rick's out dir)> <out dir> [art dir]
 
 Writes <out>/files: ric.nud/.nut/.bon/.xml (the converted body files, renamed), key_52494331.bin (Marduk's moveset with
 Rick's id in its header) and ric/alo/... (copies of Marduk's effect files and their textures: the title loads a
-fighter's effects as <code>/alo/<name>.alo, with its own code).
+fighter's effects as <code>/alo/<name>.alo, with its own code); with an art dir (ttt2rick.convert.portrait's out),
+also its files/ (Rick's portraits).
 """
 import os
 import struct
@@ -55,7 +56,7 @@ def arc_key(name):
     return key_of(name)
 
 
-def main(game, rick, out):
+def main(game, rick, out, art=None):
     arc = Archives(game)
     folder = game if os.path.isdir(os.path.join(game, 'game')) is False else os.path.join(game, 'game')
     image = open(os.path.join(folder, 'tekken.img'), 'rb').read()
@@ -65,6 +66,12 @@ def main(game, rick, out):
     files['key_%08x.bin' % MOVESET_KEY] = moveset(arc, image)
     fx, names = effects(arc)
     files.update(fx)
+    if art:
+        root = os.path.join(art, 'files')
+        for r, _, fs in os.walk(root):
+            for f in fs:
+                rel = os.path.relpath(os.path.join(r, f), root).replace(os.sep, '/')
+                files[rel] = open(os.path.join(r, f), 'rb').read()
     dest = os.path.join(out, 'files')
     for root, dirs, fs in os.walk(dest, topdown=False):
         for f in fs:
@@ -79,6 +86,6 @@ def main(game, rick, out):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 4:
+    if len(sys.argv) not in (4, 5):
         sys.exit(__doc__)
     main(*sys.argv[1:])

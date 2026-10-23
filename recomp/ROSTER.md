@@ -77,3 +77,13 @@ fights; Rick uses Marduk's moveset. Overrides so far: the chara master/registry 
 Still open: the select screen shows Marduk's portrait/name for Rick's cell (UI tables by id), a few bounds asserts
 during the fight load are ignored by the runtime (`sub_8255C108`, `sub_82584ED0`, `sub_8225D460`: tables indexed
 by id, to answer with Marduk's row), tag teams with Rick + Marduk not yet tried, voice is Marduk's.
+
+### Portraits (from the user's picture `work/art/rick_taylor.png`)
+
+`ttt2rick.convert.portrait` makes Rick's two big portraits (356x612, red / blue mirrored) in the game's frames and
+writes them as `ric/portrait_1p.nut` / `ric/portrait_2p.nut`. The game shows portraits two ways:
+- by key: `sub_8262B9A0` reads a 59 x 2 key table (`0x820CD408`, by UI row); `rick_slot.cpp` lends Rick's keys to
+  Marduk's row while it runs for Rick (screens after the select; not yet seen: Practice has no VS screen).
+- by layout label: the select screen's hover portrait and its member bars jump layout sprites (LMB, data007) to
+  per-fighter labels from a 59 x 28-byte table at `0x82E0F688` (`chara_face_yoko_<code>`, `p1_chara_waku_<code>`).
+  Rick needs his own labels and frames in those layouts (Petexy's art.py + lmb.py do this on Wii U): to do.

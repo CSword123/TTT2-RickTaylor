@@ -1,0 +1,120 @@
+"""Rick's big select portraits (356x612, player 1 red frame, player 2 blue and mirrored) from a picture of him.
+
+python -m ttt2rick.convert.portrait <game folder> <picture.png (RGBA, transparent around him)> <out dir>
+
+The frames and panels come from the game's own portraits (container 6CCDFC60, data003: 118 NUTs, two per UI
+position): the median of each side's 59 gives the frame glow, the frame splits the outside from the panel, and the
+panel gets one dark colour. Rick goes over both, as the game's fighters do (their heads and shoulders cross the
+frame), placed and scaled like a bust: head top at HEAD_TOP, the picture's width scaled by SCALE. Writes
+portrait_1p.png and portrait_2p.png, and the game's single-file form of each (a NUT like Marduk's own,
+`ric/portrait_1p.nut` and `ric/portrait_2p.nut` under <out>/files, for ttt2rick.ttt2.overlay; recomp/runtime/
+rick_slot.cpp lends their keys to Marduk's row of the portrait key table while the game shows Rick).
+"""
+import os
+import struct
+import sys
+from collections import deque
+
+import numpy as np
+from PIL import Image, ImageFilter
+
+from ..ttt2 import xbox
+from ..ttt2.archive import Archives
+from ..ttt2.petexy import nut
+
+CONTAINER = 0x6CCDFC60
+KEY_TABLE = 0x820CD408          # in the game image: 59 x {player 1 key, player 2 key}, by UI row
+DONOR_ROW = 18                  # Marduk's UI row
+SIZE = (356, 612)
+PANEL = (24, 24, 27, 240)       # the panels' dark grey
+SCALE = 0.70                    # of the picture's pixels
+HEAD_TOP, CENTRE_X = 18, 182    # where the picture's top and centre land
+OVERFLOW_FADE = (250, 380)      # outside the frame, Rick fades out between these rows (the game's busts do)
+FRINGE = 5                      # px of the picture's dark cut-out edge trimmed off
+
+
+def portraits(arc):
+    d = arc.read(CONTAINER)
+    n, = struct.unpack_from('>I', d, 0)
+    out = []
+    for i in range(n):
+        o, s = struct.unpack_from('>II', d, 4 + 8 * i)
+        out.append(xbox.decode_texture(xbox.read_nut(d[o:o + s])['textures'][0]))
+    return np.stack(out)
+
+
+def masks(med, side):
+    r, g, b, a = (med[..., i].astype(int) for i in range(4))
+    glow = (a > 40) & ((r - np.maximum(g, b) > 50) if side == 0 else (np.minimum(g, b) - r > 50))
+    h, w = glow.shape
+    outside = np.zeros_like(glow)
+    q = deque([(y, x) for y in range(h) for x in (0, w - 1)] + [(y, x) for x in range(w) for y in (0, h - 1)])
+    while q:
+        y, x = q.popleft()
+        if outside[y, x] or glow[y, x]:
+            continue
+        outside[y, x] = True
+        for yy, xx in ((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)):
+            if 0 <= yy < h and 0 <= xx < w and not outside[yy, xx] and not glow[yy, xx]:
+                q.append((yy, xx))
+    near = np.asarray(Image.fromarray((outside * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(41))) > 0
+    frame = glow & near
+    return frame, ~outside & ~frame
+
+
+def compose(med, frame, inside, picture, mirror):
+    base = np.where(frame[..., None], med, 0).astype(np.float32)
+    base[inside] = PANEL
+    a = picture.getchannel('A').filter(ImageFilter.MinFilter(2 * FRINGE + 1)).filter(ImageFilter.GaussianBlur(1.5))
+    picture = picture.copy()
+    picture.putalpha(a)
+    pic = picture.resize((round(picture.width * SCALE), round(picture.height * SCALE)), Image.LANCZOS)
+    layer = Image.new('RGBA', SIZE)
+    layer.paste(pic, (CENTRE_X - pic.width // 2, HEAD_TOP))
+    fig = np.asarray(layer).astype(np.float32)
+    y = np.arange(frame.shape[0], dtype=np.float32)[:, None]
+    ramp = np.clip((OVERFLOW_FADE[1] - y) / (OVERFLOW_FADE[1] - OVERFLOW_FADE[0]), 0, 1)
+    within = np.asarray(Image.fromarray(((inside | frame) * 255).astype(np.uint8)).filter(
+        ImageFilter.GaussianBlur(3)), np.float32) / 255.0
+    fig[..., 3] *= np.maximum(within, ramp)
+    fa = fig[..., 3:] / 255.0
+    rgb = fig[..., :3] * fa + base[..., :3] * (1 - fa)
+    alpha = np.maximum(base[..., 3:], fig[..., 3:])
+    out = np.concatenate([rgb, alpha], -1).clip(0, 255).astype(np.uint8)
+    return out[:, ::-1] if mirror else out
+
+
+def main(game, picture, out):
+    arc = Archives(game)
+    P = portraits(arc)
+    pic = Image.open(picture).convert('RGBA')
+    os.makedirs(out, exist_ok=True)
+    textures = []
+    for side in (0, 1):
+        med = np.median(P[side::2].astype(np.int16), 0).astype(np.uint8)
+        if side == 1:                   # the blue side is the red one mirrored: compose unmirrored, then flip
+            med = med[:, ::-1]
+        frame, inside = masks(med, side)
+        img = compose(med, frame, inside, pic, mirror=side == 1)
+        Image.fromarray(img).save(os.path.join(out, 'portrait_%dp.png' % (side + 1)))
+        textures.append(img)
+    # the single files: Marduk's, its texture replaced
+    folder = os.path.join(game, 'game') if os.path.isdir(os.path.join(game, 'game')) else game
+    image = open(os.path.join(folder, 'tekken.img'), 'rb').read()
+    for side, img in enumerate(textures):
+        key = struct.unpack_from('>I', image, KEY_TABLE - 0x82000000 + 4 * (2 * DONOR_ROW + side))[0]
+        donor = xbox.read_nut(arc.read(key))
+        t = donor['textures'][0]
+        new = nut.make_texture(img, t['gidx'], t['fmt'], mips=len(t['mips']))
+        donor['textures'][0] = dict(t, mips=new['mips'])
+        path = os.path.join(out, 'files', 'ric', 'portrait_%dp.nut' % (side + 1))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, 'wb').write(xbox.write_nut(donor))
+    print(os.path.join(out, 'portrait_1p.png'), os.path.join(out, 'portrait_2p.png'))
+    return textures
+
+
+if __name__ == '__main__':
+    if len(sys.argv) != 4:
+        sys.exit(__doc__)
+    main(*sys.argv[1:])

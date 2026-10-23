@@ -229,9 +229,10 @@ PPC_FUNC(sub_82276270)                      // the record's +20 function: Marduk
     __imp__sub_82276270(ctx, base);
 }
 
+void RickLendPortraits(uint8_t* base);
 PPC_FUNC(sub_82276348)
 {
-    if (On() && g.ready && ctx.r3.u32 == kId) { ctx.r3.u64 = GRead32(base, g.records + 8); return; }
+    if (On() && g.ready && ctx.r3.u32 == kId) { RickLendPortraits(base); ctx.r3.u64 = GRead32(base, g.records + 8); return; }
     __imp__sub_82276348(ctx, base);
 }
 
@@ -330,4 +331,34 @@ PPC_FUNC(sub_82554F08)                      // bitset (r3: {count, ..., bits}) s
         ctx.r4.u64 = kDonorId;
     }
     __imp__sub_82554F08(ctx, base);
+}
+
+// Portraits: the portrait code (sub_8262B9A0: screen r3, member r4) finds a member's UI row through sub_82276348
+// and its two pictures' keys in a table by row; for Rick, Marduk's row of the table holds Rick's keys meanwhile.
+namespace {
+constexpr uint32_t kPortraitKeys = 0x820CD408, kDonorUiRow = 18;
+uint32_t g_portraitScope = 0, g_lentKeys[2] = {}, g_lent = 0;
+}
+extern "C" PPC_FUNC(__imp__sub_8262B9A0);
+PPC_FUNC(sub_8262B9A0)
+{
+    ++g_portraitScope;
+    __imp__sub_8262B9A0(ctx, base);
+    --g_portraitScope;
+    if (g_lent)
+    {
+        for (uint32_t s = 0; s < 2; ++s) GWrite32(base, kPortraitKeys + 4 * (2 * kDonorUiRow + s), g_lentKeys[s]);
+        g_lent = 0;
+    }
+}
+void RickLendPortraits(uint8_t* base)       // from sub_82276348 (id 64) inside sub_8262B9A0
+{
+    if (!g_portraitScope || g_lent) return;
+    for (uint32_t s = 0; s < 2; ++s)
+    {
+        const uint32_t at = kPortraitKeys + 4 * (2 * kDonorUiRow + s);
+        g_lentKeys[s] = GRead32(base, at);
+        GWrite32(base, at, Crc(s ? "ric/portrait_2p.nut" : "ric/portrait_1p.nut"));
+    }
+    g_lent = 1;
 }
