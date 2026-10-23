@@ -1,0 +1,3 @@
+#!/bin/sh
+# Print the Windows (Z:) path of a Linux path, as Wine sees it.
+realpath -m "$1" | sed 's|/|\\|g; s|^|Z:|'

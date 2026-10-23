@@ -1,0 +1,46 @@
+# CMake toolchain: Windows x64 binaries from Linux with LLVM's MSVC-compatible tools and a Windows SDK + MSVC CRT
+# unpacked by xwin (`xwin splat --use-winsysroot-style`). XWIN_SYSROOT: that folder.
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_VERSION 10.0)
+set(CMAKE_SYSTEM_PROCESSOR AMD64)
+
+if(NOT XWIN_SYSROOT)
+    set(XWIN_SYSROOT "$ENV{XWIN_SYSROOT}")
+endif()
+if(NOT EXISTS "${XWIN_SYSROOT}/VC")
+    message(FATAL_ERROR "XWIN_SYSROOT (${XWIN_SYSROOT}) is not an xwin winsysroot-style splat")
+endif()
+set(LLVM_BIN "/usr/lib/llvm-21/bin" CACHE PATH "LLVM tools")
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES XWIN_SYSROOT LLVM_BIN)   # (try_compile projects re-read this file)
+set(CMAKE_TRY_COMPILE_CONFIGURATION Release)    # the splat has no debug CRT (msvcrtd.lib)
+
+set(CMAKE_C_COMPILER "${LLVM_BIN}/clang-cl")
+set(CMAKE_CXX_COMPILER "${LLVM_BIN}/clang-cl")
+set(CMAKE_LINKER "${LLVM_BIN}/lld-link" CACHE FILEPATH "")
+set(CMAKE_AR "${LLVM_BIN}/llvm-lib" CACHE FILEPATH "")
+set(CMAKE_RC_COMPILER "${LLVM_BIN}/llvm-rc" CACHE FILEPATH "")
+set(CMAKE_MT "${LLVM_BIN}/llvm-mt" CACHE FILEPATH "")
+if(NOT EXISTS "${CMAKE_LINKER}")
+    find_program(_lld lld-link REQUIRED)
+    set(CMAKE_LINKER "${_lld}" CACHE FILEPATH "" FORCE)
+endif()
+
+set(_sys "/winsysroot ${XWIN_SYSROOT} --target=x86_64-pc-windows-msvc -fuse-ld=lld")
+set(CMAKE_C_FLAGS_INIT "${_sys}")
+set(CMAKE_CXX_FLAGS_INIT "${_sys} /EHsc")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "/winsysroot:${XWIN_SYSROOT}")
+set(CMAKE_SHARED_LINKER_FLAGS_INIT "/winsysroot:${XWIN_SYSROOT}")
+set(CMAKE_MODULE_LINKER_FLAGS_INIT "/winsysroot:${XWIN_SYSROOT}")
+
+# llvm-rc preprocesses with clang: give it the SDK's headers.
+file(GLOB _sdk_inc "${XWIN_SYSROOT}/Windows Kits/10/Include/*")
+list(SORT _sdk_inc)
+list(GET _sdk_inc -1 _sdk_inc)
+file(GLOB _msvc_inc "${XWIN_SYSROOT}/VC/Tools/MSVC/*/include")
+list(GET _msvc_inc -1 _msvc_inc)
+set(CMAKE_RC_FLAGS_INIT "-I \"${_sdk_inc}/um\" -I \"${_sdk_inc}/shared\" -I \"${_msvc_inc}\"")
+
+set(CMAKE_FIND_ROOT_PATH "${XWIN_SYSROOT}")
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)

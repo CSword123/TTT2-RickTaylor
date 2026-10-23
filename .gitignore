@@ -1,0 +1,13 @@
+work/
+third_party/
+__pycache__/
+.venv/
+xenia/
+*.iso
+proton/*
+!proton/run.sh
+!proton/winpath
+!proton/README.md
+!proton/drive.py
+!proton/route_marduk.sh
+!proton/guestmem.py
