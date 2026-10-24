@@ -92,6 +92,7 @@ struct State
     uint32_t records = 0;           // our two records
     uint32_t code = 0;              // "ric\0"
     uint32_t scratch = 0;           // string objects and keys for the guest calls
+    uint32_t labels = 0;            // 4 x 128 bytes: label names with Rick's code (sub_82B62BE8)
     bool ready = false, registered = false;
 } g;
 
@@ -131,6 +132,7 @@ void Prepare(uint8_t* base)
     g.code = Alloc(base, 16);
     std::memcpy(base + g.code, "ric", 4);
     g.scratch = Alloc(base, 1024);
+    g.labels = Alloc(base, 4 * 128);
 
     if (kRow != 17)                          // a row of his own (not while he shares Marduk's)
     {
@@ -234,18 +236,23 @@ RECORD_FIELD(82276310, GRead32(base, r + 12))
 RECORD_FIELD(82276408, GRead32(base, r + 80))
 #undef RECORD_FIELD
 
-// The fights' HUD (sub_823D55A8 faces, sub_823D6738 names) asks a member's UI row of its record (sub_82276380) and
-// takes its pictures' numbers from a table by row (0x82DDD2F0: {name, face 1p, face 2p}) to sub_823D11B8 (HUD
-// container 7C476BDE = resource 176). Rick's record answers Marduk's row; until the next record asked, Marduk's
-// numbers are Rick's own, appended to the container by ttt2rick.convert.hud.
+// Rick has Marduk's UI row (the row of every table of the 2D screens and the HUD). The screens ask a member's row
+// (sub_82276348 by id, sub_82276380 by record) and then use that row's entries; until the next question, the
+// entries of Marduk's row that Rick has his own of are his:
+// - the fights' HUD (sub_823D55A8 faces, sub_823D6738 names) takes its pictures' numbers from a table by row
+//   (0x82DDD2F0: {name, face 1p, face 2p}) to sub_823D11B8 (HUD container 7C476BDE = resource 176): Marduk's
+//   numbers become Rick's own, appended to the container by ttt2rick.convert.hud;
+// - the 2D layouts' per-fighter labels (chara_face_mar, p1_chara_waku_mar, ...), whatever table they come from,
+//   reach sub_82B62BE8 (a sprite's jump to a label by name): Marduk's become Rick's (chara_face_ric, ...), which
+//   ttt2rick.convert.layouts adds to every layout that has Marduk's.
 namespace {
 constexpr uint32_t kHudResource = 176, kHudDonor[3] = { 48, 123, 182 }, kHudRick[3] = { 259, 260, 261 };
-bool g_hudRick = false;
+bool g_askedRick = false;
 }
 PPC_FUNC(sub_82276380)                      // record -> +8 UI row
 {
-    g_hudRick = Ours(ctx.r3.u32);
-    if (g_hudRick) { ctx.r3.u64 = GRead32(base, RecordAddr(ctx.r3.u32) + 8); return; }
+    g_askedRick = Ours(ctx.r3.u32);
+    if (g_askedRick) { ctx.r3.u64 = GRead32(base, RecordAddr(ctx.r3.u32) + 8); return; }
     LogOddRecord("82276380", ctx.r3.u32, uint32_t(ctx.lr));
     __imp__sub_82276380(ctx, base);
 }
@@ -253,10 +260,36 @@ PPC_FUNC(sub_82276380)                      // record -> +8 UI row
 extern "C" PPC_FUNC(__imp__sub_823D11B8);
 PPC_FUNC(sub_823D11B8)                      // a HUD picture (r4 resource, r5 number, ...)
 {
-    if (g_hudRick && ctx.r4.u32 == kHudResource)
+    if (g_askedRick && ctx.r4.u32 == kHudResource)
         for (uint32_t k = 0; k < 3; ++k)
             if (ctx.r5.u32 == kHudDonor[k]) { ctx.r5.u64 = kHudRick[k]; break; }
     __imp__sub_823D11B8(ctx, base);
+}
+
+extern "C" PPC_FUNC(__imp__sub_82B62BE8);
+PPC_FUNC(sub_82B62BE8)                      // (sprite r3, label name r4): jump to the label
+{
+    const uint32_t name = ctx.r4.u32;
+    if (g_askedRick && g.ready && name)
+    {
+        const char* text = reinterpret_cast<const char*>(base + name);
+        const size_t n = strnlen(text, 120);
+        for (size_t at = 0; at + 3 <= n; ++at)  // the code token: "mar" between '_' (or the ends)
+            if (std::memcmp(text + at, "mar", 3) == 0 && (at == 0 || text[at - 1] == '_') &&
+                (at + 3 == n || text[at + 3] == '_'))
+            {
+                static uint32_t ring = 0;
+                const uint32_t copy = g.labels + 128 * (ring++ & 3);
+                std::memcpy(base + copy, text, n + 1);
+                std::memcpy(base + copy + at, "ric", 3);
+                ctx.r4.u64 = copy;
+                if (std::getenv("TTT2_RICK_TRACE"))
+                    std::fprintf(stderr, "[rick] label %s -> %s, lr %08X\n", text,
+                                 reinterpret_cast<const char*>(base + copy), uint32_t(ctx.lr));
+                break;
+            }
+    }
+    __imp__sub_82B62BE8(ctx, base);
 }
 
 PPC_FUNC(sub_82276270)                      // the record's +20 function: Marduk's
@@ -269,7 +302,8 @@ void RickLendPortraits(uint8_t* base);
 PPC_FUNC(sub_82276348)
 {
     const uint32_t id = ctx.r3.u32, lr = uint32_t(ctx.lr);
-    if (On() && g.ready && id == kId) { RickLendPortraits(base); ctx.r3.u64 = GRead32(base, g.records + 8); }
+    g_askedRick = On() && g.ready && id == kId;
+    if (g_askedRick) { RickLendPortraits(base); ctx.r3.u64 = GRead32(base, g.records + 8); }
     else __imp__sub_82276348(ctx, base);
     if (std::getenv("TTT2_RICK_TRACE"))
     {

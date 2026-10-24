@@ -84,6 +84,13 @@ by id, to answer with Marduk's row), tag teams with Rick + Marduk not yet tried,
 writes them as `ric/portrait_1p.nut` / `ric/portrait_2p.nut`. The game shows portraits two ways:
 - by key: `sub_8262B9A0` reads a 59 x 2 key table (`0x820CD408`, by UI row); `rick_slot.cpp` lends Rick's keys to
   Marduk's row while it runs for Rick (screens after the select; not yet seen: Practice has no VS screen).
-- by layout label: the select screen's hover portrait and its member bars jump layout sprites (LMB, data007) to
-  per-fighter labels from a 59 x 28-byte table at `0x82E0F688` (`chara_face_yoko_<code>`, `p1_chara_waku_<code>`).
-  Rick needs his own labels and frames in those layouts (Petexy's art.py + lmb.py do this on Wii U): to do.
+- by layout label: the 2D layouts (LMB, data007) jump per-fighter sprites to labels `<kind>_<code>`
+  (`chara_face_`, `chara_name_s_`, `face_`, `p<n>_chara_waku_`, `chara_face_yoko_`, ...). `ttt2rick.convert.layouts`
+  adds Rick's labels and pictures to the 58 layouts with Marduk's; `rick_slot.cpp` renames Marduk's label to Rick's
+  in `sub_82B62BE8` (a sprite's jump to a label by name) while the last UI-row question (`sub_82276348` by id,
+  `sub_82276380` by record) was about Rick. Loading and VS screens: done.
+- the fights' HUD: container `7C476BDE` by numbers from `0x82DDD2F0` (59 x {name, face 1p, face 2p}); Rick's three are
+  appended as 259-261 (`ttt2rick.convert.hud`) and given for Marduk's in `sub_823D11B8` the same way. Done.
+- still Marduk's: the select screen's big hover portrait. `sub_8262BEE0` lists container `6CCDFC60`'s frames per
+  player (vectors {first, last, end} at object +4 and +24, by UI row) and `sub_826409E0(screen, slot, row)` shows
+  one from a row saved frames earlier, so it needs per-member tracking (Petexy's `kSelectQueries`), not the flag.
