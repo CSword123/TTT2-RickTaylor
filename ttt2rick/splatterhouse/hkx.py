@@ -108,3 +108,206 @@ def skeleton(pf):
     ref = np.array([struct.unpack_from('>12f', pf.d, rp + 48 * k) for k in range(nr)])
     ref = np.concatenate([ref[:, 0:3], ref[:, 4:8], ref[:, 8:11]], 1)
     return dict(name=pf.string(a), names=names, parents=parents, reference=ref)
+
+
+# ------------------------------------------------------------------------------------------------ spline animations
+# Block data (hkaSplineSkeletalAnimation.data at blockOffsets[b]): first a 4-byte mask per transform track
+# {quantization, position, rotation, scale}: quantization bits 0-1 position (0: 8 bits, 1: 16 bits), 2-5 rotation
+# (ROT_SIZE), 6-7 scale; position / scale bits 0-2 static x y z, 4-6 spline x y z; rotation bits 0-3 static, 4-7
+# spline (any: the whole quaternion). Then per track its position, rotation and scale data:
+# The block data has its own byte order (the animation's endian @124: 0 little, as in these files).
+#   spline: u16 items, u8 degree, (items + degree + 2) u8 knots (frames in the block); then (vectors) align 4, per
+#   axis min and max floats for spline axes, one float for static ones, (items + 1) control points of the spline
+#   axes' quantized values, align 4; (rotations) align to the quantization's alignment, (items + 1) quaternions.
+#   static only: vectors one float per static axis; rotations one quaternion. Rotations end aligned to 4.
+# A value is the B-spline of its control points at the frame's time in the block (knots in frames); quaternions are
+# normalized afterwards.
+ROT_SIZE = {0: 4, 1: 5, 2: 6, 3: 3, 4: 2, 5: 16}          # POLAR32, THREECOMP40, THREECOMP48, THREECOMP24, STRAT16, raw
+ROT_ALIGN = {0: 4, 1: 1, 2: 2, 3: 1, 4: 2, 5: 4}
+
+
+def quat40(b):
+    """THREECOMP40: 40 bits, little-endian: three 12-bit components (each (v - 2047) / (2047 sqrt 2)), 2 bits the
+    index of the component left out (the largest), 1 bit its sign."""
+    v = int.from_bytes(b[:5], 'little')
+    c = [((v >> (12 * k)) & 0xFFF) - 2047 for k in range(3)]
+    c = [x * 0.000345436 for x in c]
+    w = math.sqrt(max(0.0, 1.0 - sum(x * x for x in c)))
+    if (v >> 38) & 1:
+        w = -w
+    c.insert((v >> 36) & 3, w)
+    return c
+
+
+def find_span(n, p, u, knots):
+    if u >= knots[n + 1]:
+        return n
+    lo, hi = p, n + 1
+    mid = (lo + hi) // 2
+    while u < knots[mid] or u >= knots[mid + 1]:
+        if u < knots[mid]:
+            hi = mid
+        else:
+            lo = mid
+        mid = (lo + hi) // 2
+    return mid
+
+
+def bspline(points, p, knots, u):
+    """The B-spline (degree p, knots, control points (n + 1, k)) at u."""
+    n = len(points) - 1
+    if n == 0:
+        return points[0]
+    span = find_span(n, p, u, knots)
+    N = [1.0] + [0.0] * p
+    left, right = [0.0] * (p + 1), [0.0] * (p + 1)
+    for j in range(1, p + 1):
+        left[j] = u - knots[span + 1 - j]
+        right[j] = knots[span + j] - u
+        saved = 0.0
+        for r in range(j):
+            den = right[r + 1] + left[j - r]
+            t = N[r] / den if den else 0.0
+            N[r] = saved + right[r + 1] * t
+            saved = left[j - r] * t
+        N[j] = saved
+    out = np.zeros(points.shape[1])
+    for i in range(p + 1):
+        out += N[i] * points[span - p + i]
+    return out
+
+
+class _Reader:
+    def __init__(self, d, pos, endian='<'):
+        self.d, self.pos, self.start, self.e = d, pos, pos, endian
+
+    def align(self, n):
+        self.pos += -(self.pos - self.start) % n
+
+    def u8(self):
+        self.pos += 1
+        return self.d[self.pos - 1]
+
+    def u16(self):
+        self.pos += 2
+        return struct.unpack_from(self.e + 'H', self.d, self.pos - 2)[0]
+
+    def f32(self):
+        self.pos += 4
+        return struct.unpack_from(self.e + 'f', self.d, self.pos - 4)[0]
+
+    def take(self, n):
+        self.pos += n
+        return self.d[self.pos - n:self.pos]
+
+
+def _spline_header(r):
+    items, degree = r.u16(), r.u8()
+    knots = list(r.take(items + degree + 2))
+    return items, degree, knots
+
+
+def _vector(r, mask, quant, default):
+    """A track's position or scale: (function of block time) -> 3 floats."""
+    static = [bool(mask & (1 << k)) for k in range(3)]
+    spline = [bool(mask & (0x10 << k)) for k in range(3)]
+    if any(spline):
+        items, degree, knots = _spline_header(r)
+        r.align(4)
+        lo, hi, value = [0.0] * 3, [0.0] * 3, list(default)
+        for k in range(3):
+            if spline[k]:
+                lo[k], hi[k] = r.f32(), r.f32()
+            elif static[k]:
+                value[k] = r.f32()
+        pts = np.tile(np.array(value, float), (items + 1, 1))
+        size = 2 if quant else 1
+        top = 65535.0 if quant else 255.0
+        for i in range(items + 1):
+            for k in range(3):
+                if spline[k]:
+                    q = r.u16() if quant else r.u8()
+                    pts[i, k] = lo[k] + (hi[k] - lo[k]) * q / top
+        r.align(4)
+        return lambda u: bspline(pts, degree, knots, u)
+    value = list(default)
+    for k in range(3):
+        if static[k]:
+            value[k] = r.f32()
+    value = np.array(value, float)
+    return lambda u: value
+
+
+def _rotation(r, mask, quant):
+    if quant not in (1,):
+        raise NotImplementedError('rotation quantization %d' % quant)
+    if mask & 0xF0:
+        items, degree, knots = _spline_header(r)
+        r.align(ROT_ALIGN[quant])
+        pts = np.array([quat40(r.take(5)) for _ in range(items + 1)], float)
+        for i in range(1, len(pts)):              # the same hemisphere as the previous control point
+            if np.dot(pts[i], pts[i - 1]) < 0:
+                pts[i] = -pts[i]
+        r.align(4)
+
+        def f(u):
+            q = bspline(pts, degree, knots, u)
+            return q / np.linalg.norm(q)
+        return f
+    if mask & 0x0F:
+        r.align(ROT_ALIGN[quant])
+        q = np.array(quat40(r.take(5)), float)
+        r.align(4)
+        return lambda u: q
+    return lambda u: np.array([0.0, 0.0, 0.0, 1.0])
+
+
+def animation(pf):
+    """{frames, fps, tracks: (frames, tracks, 10) tx ty tz qx qy qz qw sx sy sz, bones: track -> skeleton bone}
+    of the file's (first) hkaSplineSkeletalAnimation and its binding."""
+    a = pf.of_class('hkaSplineSkeletalAnimation')[0]
+    ntracks, frames = pf.i32(a + 16), pf.i32(a + 36)
+    per_block = pf.i32(a + 44)
+    frame_time = pf.f32(a + 60)
+    bo, nb = pf.array(a + 64)
+    dp, _ = pf.array(a + 112)
+    out = np.zeros((frames, ntracks, 10))
+    for b in range(nb):
+        r = _Reader(pf.d, dp + pf.u32(bo + 4 * b), '<' if pf.u32(a + 124) == 0 else '>')
+        masks = [tuple(r.take(4)) for _ in range(ntracks)]
+        r.align(4)
+        fns = []
+        for q, pm, rm, sm in masks:
+            pos = _vector(r, pm, q & 3, (0.0, 0.0, 0.0))
+            rot = _rotation(r, rm, (q >> 2) & 15)
+            scl = _vector(r, sm, (q >> 6) & 3, (1.0, 1.0, 1.0))
+            fns.append((pos, rot, scl))
+        first = b * (per_block - 1)
+        for f in range(first, min(frames, first + per_block)):
+            u = float(f - first)
+            for t, (pos, rot, scl) in enumerate(fns):
+                out[f, t] = np.concatenate([pos(u), rot(u), scl(u)])
+    bones = list(range(ntracks))
+    for bind in pf.of_class('hkaAnimationBinding'):
+        if pf.ptr(bind) == a:
+            ip, n = pf.array(bind + 4)
+            if n:
+                bones = list(struct.unpack_from('>%dh' % n, pf.d, ip))
+    return dict(frames=frames, fps=1.0 / frame_time if frame_time else 30.0, tracks=out, bones=bones)
+
+
+def main(argv):
+    pf = Packfile(open(argv[0], 'rb').read())
+    print(sorted(set(c for _, c in pf.objects)))
+    if pf.of_class('hkaSkeleton'):
+        s = skeleton(pf)
+        print('skeleton %s: %d bones' % (s['name'], len(s['names'])))
+    if len(argv) > 1 and pf.of_class('hkaSplineSkeletalAnimation'):
+        an = animation(pf)
+        q = an['tracks'][..., 3:7]
+        print('%d frames at %.0f fps, %d tracks; |q| %.4f..%.4f' % (an['frames'], an['fps'], q.shape[1],
+              np.linalg.norm(q, axis=-1).min(), np.linalg.norm(q, axis=-1).max()))
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
