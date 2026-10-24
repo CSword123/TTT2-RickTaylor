@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <set>
+#include <utility>
 
 extern "C" PPC_FUNC(__imp__sub_82468AD0);   // builds the chara master (r3) and the key registry
 extern "C" PPC_FUNC(__imp__sub_8246A054);   // the same, for the other build
@@ -36,7 +38,7 @@ extern "C" PPC_FUNC(__imp__sub_82276440);   // motion row -> record
 extern "C" PPC_FUNC(__imp__sub_82331B50);   // a player's fighter from a record: loadPlayer ... <code>
 
 namespace {
-constexpr uint32_t kId = 64, kRecord0 = 140, kRow = 58, kDonorId = 17, kDonorRecord0 = 36;
+constexpr uint32_t kId = 64, kRecord0 = 140, kRow = 17, kDonorId = 17, kDonorRecord0 = 36, kDonorRow = 17;
 constexpr uint32_t kRecords = 0x82DC21B8, kRecordSize = 84, kTitleRecords = 139;
 constexpr uint32_t kMotionRows = 0x820A24B4;            // 68 x {moveset, move list, motion pack}
 constexpr uint32_t kCodes = 0x82DD1CC8;                  // 63 x char*, by internal id
@@ -130,10 +132,13 @@ void Prepare(uint8_t* base)
     std::memcpy(base + g.code, "ric", 4);
     g.scratch = Alloc(base, 1024);
 
-    const uint32_t row = kMotionRows + 12 * kRow;
-    GWrite32(base, row + 0, kMovesetKey);
-    GWrite32(base, row + 4, kDonorMoveList);
-    GWrite32(base, row + 8, kDonorMotions);
+    if (kRow != 17)                          // a row of his own (not while he shares Marduk's)
+    {
+        const uint32_t row = kMotionRows + 12 * kRow;
+        GWrite32(base, row + 0, kMovesetKey);
+        GWrite32(base, row + 4, kDonorMoveList);
+        GWrite32(base, row + 8, kDonorMotions);
+    }
 
     // The full grids (modes 1 and 2: 62 cells, the top row columns 3-18) get a 63rd cell: Rick at column 19 of
     // the top row, in the row's ring (right of cell 61, left of 46) and above the middle row's column 19 (cell 19).
@@ -209,10 +214,17 @@ PPC_FUNC(sub_8246A054)
     if (On()) Register(ctx, base, master);
 }
 
+void LogOddRecord(const char* fn, uint32_t record, uint32_t lr)
+{
+    static uint32_t logged = 0;
+    if (On() && record >= kTitleRecords && !(record == kRecord0 || record == kRecord0 + 1) && logged++ < 40)
+        std::fprintf(stderr, "[rick] %s(record %u) out of range, lr %08X\n", fn, record, lr);
+}
 #define RECORD_FIELD(addr, value)                                                                                \
     PPC_FUNC(sub_##addr)                                                                                         \
     {                                                                                                            \
         if (Ours(ctx.r3.u32)) { const uint32_t r = RecordAddr(ctx.r3.u32); (void)r; ctx.r3.u64 = (value); return; } \
+        LogOddRecord(#addr, ctx.r3.u32, uint32_t(ctx.lr));                                                       \
         __imp__sub_##addr(ctx, base);                                                                            \
     }
 RECORD_FIELD(822761A0, r)
@@ -232,8 +244,15 @@ PPC_FUNC(sub_82276270)                      // the record's +20 function: Marduk
 void RickLendPortraits(uint8_t* base);
 PPC_FUNC(sub_82276348)
 {
-    if (On() && g.ready && ctx.r3.u32 == kId) { RickLendPortraits(base); ctx.r3.u64 = GRead32(base, g.records + 8); return; }
-    __imp__sub_82276348(ctx, base);
+    const uint32_t id = ctx.r3.u32, lr = uint32_t(ctx.lr);
+    if (On() && g.ready && id == kId) { RickLendPortraits(base); ctx.r3.u64 = GRead32(base, g.records + 8); }
+    else __imp__sub_82276348(ctx, base);
+    if (std::getenv("TTT2_RICK_TRACE"))
+    {
+        static std::set<std::pair<uint32_t, uint32_t>> seen;
+        if (seen.size() < 3000 && seen.emplace(id, lr).second)
+            std::fprintf(stderr, "[rick] id_to_row(%u) = %u lr %08X\n", id, ctx.r3.u32, lr);
+    }
 }
 
 PPC_FUNC(sub_822761D0)
@@ -257,7 +276,7 @@ PPC_FUNC(sub_82276218)
 
 PPC_FUNC(sub_82276440)
 {
-    if (On() && g.ready && ctx.r3.u32 == kRow) { ctx.r3.u64 = kRecord0; return; }
+    if (On() && g.ready && kRow != kDonorRow && ctx.r3.u32 == kRow) { ctx.r3.u64 = kRecord0; return; }
     __imp__sub_82276440(ctx, base);
 }
 
@@ -361,4 +380,81 @@ void RickLendPortraits(uint8_t* base)       // from sub_82276348 (id 64) inside 
         GWrite32(base, at, Crc(s ? "ric/portrait_2p.nut" : "ric/portrait_1p.nut"));
     }
     g_lent = 1;
+}
+
+// The loading/VS screens' portrait set (sub_82711E78: object r3, internal id r4) copies a fighter's keys from the
+// key tables by its UI row: for Rick, his own pictures (the main one and, for the alternate kinds Marduk has, the
+// green one).
+extern "C" PPC_FUNC(__imp__sub_82711E78);
+PPC_FUNC(sub_82711E78)
+{
+    const uint32_t obj = ctx.r3.u32, id = ctx.r4.u32;
+    if (On()) std::fprintf(stderr, "[rick] portrait set %08X for id %u, lr %08X\n", obj, id, uint32_t(ctx.lr));
+    __imp__sub_82711E78(ctx, base);
+    if (!(On() && g.ready && id == kId)) return;
+    GWrite32(base, obj + 0, Crc("ric/portrait_1p.nut"));
+    for (uint32_t off : { 12u, 24u, 36u })
+        if (GRead32(base, obj + off)) GWrite32(base, obj + off, Crc("ric/portrait_green.nut"));
+    std::fprintf(stderr, "[rick] portrait set %08X: Rick's\n", obj);
+}
+
+extern "C" PPC_FUNC(__imp__sub_82584ED0);
+PPC_FUNC(sub_82584ED0)                      // (table r3, index r4): its entry is set; asserts index < count
+{
+    const uint32_t count = GRead32(base, GRead32(base, ctx.r3.u32 + 68) + 12);
+    if (On() && g.ready && ctx.r4.u32 == kId && ctx.r4.u32 >= count)
+    {
+        static uint32_t logged = 0;
+        if (logged++ < 20)
+            std::fprintf(stderr, "[rick] table %08X (count %u) [%u] -> Marduk's, lr %08X\n", ctx.r3.u32, count,
+                         ctx.r4.u32, uint32_t(ctx.lr));
+        ctx.r4.u64 = kDonorId;
+    }
+    __imp__sub_82584ED0(ctx, base);
+}
+
+extern "C" PPC_FUNC(__imp__sub_8258CAE8);
+PPC_FUNC(sub_8258CAE8)                      // a per-fighter counter (u16[59] r3, row r4) += r5: none for Rick (it
+{                                           // would write past the array)
+    if (On() && ctx.r4.u32 >= 59) return;
+    __imp__sub_8258CAE8(ctx, base);
+}
+
+extern "C" PPC_FUNC(__imp__sub_822763B0);
+PPC_FUNC(sub_822763B0)                      // record whose +8 (UI row) is r3: logged for odd rows
+{
+    const uint32_t row = ctx.r3.u32, lr = uint32_t(ctx.lr);
+    __imp__sub_822763B0(ctx, base);
+    static uint32_t logged = 0;
+    if (On() && row >= 59 && logged++ < 40) std::fprintf(stderr, "[rick] row->record(%u) = %u, lr %08X\n", row, ctx.r3.u32, lr);
+}
+
+// The pick handler (sub_8227CFC0: cursor r3, record r4) stores the fighter's id in the match set-up's member byte
+// and caps it at 62 (zkb, a Fight Lab mob): for Rick the byte gets 64 back, so the screens after the select (VS,
+// loading) find him and not row 0 (Paul).
+// Later copies of the members (about a dozen functions, as on Wii U) cap the byte again: while Rick is picked, a
+// member byte holding 62 is his. (62 is otherwise only Fight Lab's mob, and a pick of anyone else clears this.)
+namespace { uint32_t g_inPick = 0, g_pickByte = 0; bool g_rickPicked = false; }
+extern "C" PPC_FUNC(__imp__sub_822815E0);
+PPC_FUNC(sub_822815E0)                      // a side's member (side r3, member r4) -> its byte (id at +0)
+{
+    __imp__sub_822815E0(ctx, base);
+    if (g_inPick) g_pickByte = ctx.r3.u32;
+    else if (g_rickPicked && ctx.r3.u32 && base[ctx.r3.u32] == 62) base[ctx.r3.u32] = uint8_t(kId);
+}
+extern "C" PPC_FUNC(__imp__sub_8227CFC0);
+PPC_FUNC(sub_8227CFC0)
+{
+    const uint32_t record = ctx.r4.u32;
+    ++g_inPick;
+    g_pickByte = 0;
+    __imp__sub_8227CFC0(ctx, base);
+    --g_inPick;
+    if (On() && g.ready && record < kTitleRecords) g_rickPicked = false;
+    if (Ours(record) && g_pickByte)
+    {
+        g_rickPicked = true;
+        base[g_pickByte] = uint8_t(kId);
+        std::fprintf(stderr, "[rick] member byte %08X = %u\n", g_pickByte, kId);
+    }
 }

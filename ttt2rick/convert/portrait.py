@@ -8,7 +8,8 @@ panel gets one dark colour. Rick goes over both, as the game's fighters do (thei
 frame), placed and scaled like a bust: head top at HEAD_TOP, the picture's width scaled by SCALE. Writes
 portrait_1p.png and portrait_2p.png, and the game's single-file form of each (a NUT like Marduk's own,
 `ric/portrait_1p.nut` and `ric/portrait_2p.nut` under <out>/files, for ttt2rick.ttt2.overlay; recomp/runtime/
-rick_slot.cpp lends their keys to Marduk's row of the portrait key table while the game shows Rick).
+rick_slot.cpp gives them to the screens that show Rick), and a green-framed one like the game's alternate
+(illustrated) portraits, portrait_green.png / ric/portrait_green.nut.
 """
 import os
 import struct
@@ -43,9 +44,25 @@ def portraits(arc):
     return np.stack(out)
 
 
+GREEN_TABLES = (0x820CD5E0, 0x820CD7B8, 0x820CD990)   # the alternate (illustrated) portraits: 59 x {key, 0}, green frames
+
+
+def green_portraits(arc, image):
+    out = []
+    for t in GREEN_TABLES:
+        for row in range(59):
+            k = struct.unpack_from('>I', image, t - 0x82000000 + 8 * row)[0]
+            if k and arc.has(k):
+                out.append(xbox.decode_texture(xbox.read_nut(arc.read(k))['textures'][0]))
+    return np.stack(out)
+
+
 def masks(med, side):
     r, g, b, a = (med[..., i].astype(int) for i in range(4))
-    glow = (a > 40) & ((r - np.maximum(g, b) > 50) if side == 0 else (np.minimum(g, b) - r > 50))
+    if side == 2:
+        glow = (a > 40) & (g - np.maximum(r, b) > 50)
+    else:
+        glow = (a > 40) & ((r - np.maximum(g, b) > 50) if side == 0 else (np.minimum(g, b) - r > 50))
     h, w = glow.shape
     outside = np.zeros_like(glow)
     q = deque([(y, x) for y in range(h) for x in (0, w - 1)] + [(y, x) for x in range(w) for y in (0, h - 1)])
@@ -98,9 +115,14 @@ def main(game, picture, out):
         img = compose(med, frame, inside, pic, mirror=side == 1)
         Image.fromarray(img).save(os.path.join(out, 'portrait_%dp.png' % (side + 1)))
         textures.append(img)
-    # the single files: Marduk's, its texture replaced
     folder = os.path.join(game, 'game') if os.path.isdir(os.path.join(game, 'game')) else game
     image = open(os.path.join(folder, 'tekken.img'), 'rb').read()
+    G = green_portraits(arc, image)
+    med = np.median(G.astype(np.int16), 0).astype(np.uint8)
+    frame, inside = masks(med, 2)
+    green = compose(med, frame, inside, pic, mirror=False)
+    Image.fromarray(green).save(os.path.join(out, 'portrait_green.png'))
+    # the single files: Marduk's, its texture replaced
     for side, img in enumerate(textures):
         key = struct.unpack_from('>I', image, KEY_TABLE - 0x82000000 + 4 * (2 * DONOR_ROW + side))[0]
         donor = xbox.read_nut(arc.read(key))
@@ -110,6 +132,9 @@ def main(game, picture, out):
         path = os.path.join(out, 'files', 'ric', 'portrait_%dp.nut' % (side + 1))
         os.makedirs(os.path.dirname(path), exist_ok=True)
         open(path, 'wb').write(xbox.write_nut(donor))
+        if side == 0:
+            donor['textures'][0] = dict(t, mips=nut.make_texture(green, t['gidx'], t['fmt'], mips=len(t['mips']))['mips'])
+            open(os.path.join(out, 'files', 'ric', 'portrait_green.nut'), 'wb').write(xbox.write_nut(donor))
     print(os.path.join(out, 'portrait_1p.png'), os.path.join(out, 'portrait_2p.png'))
     return textures
 

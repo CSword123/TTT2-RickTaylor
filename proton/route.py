@@ -52,6 +52,7 @@ def green(shot, x, y):
 
 MENU_BOX = (100, 100, 760, 470)          # the menu's text column
 LABEL_BOX = (520, 290, 770, 320)         # the select screen's mode label (PRACTICE)
+GRID_BOX = (90, 400, 1190, 610)          # the select grid (the same in every mode)
 
 
 ROWS = [70, 122, 173, 224, 275, 326, 377, 428, 479]   # the menus' icons (left edge x 106), the highlighted one red
@@ -86,6 +87,8 @@ def main():
     ap.add_argument('--exe', default='tekken_recomp_linux.exe')
     ap.add_argument('--rick', action='store_true')
     ap.add_argument('--stop', choices=['menu', 'select'])
+    ap.add_argument('--arcade', action='store_true', help='Arcade Battle instead of Practice (no dummy; frames '
+                    'from the pick on are saved as <out>_NN.png)')
     ap.add_argument('--stage-right', type=int, default=4)       # Germany, Historic Town Square
     ap.add_argument('--out', default=os.path.join(PORT, 'fight.png'))
     a = ap.parse_args()
@@ -116,13 +119,14 @@ def main():
         return
     choose_row(1, 'Offline Mode')
     until(lambda s: like(s, 'offline.png', (160, 100, 760, 470)), 'A 150 300', what='the Offline menu')
-    choose_row(6, 'Practice')
-    until(lambda s: not like(s, 'offline_practice.png', (160, 100, 760, 470)), 'A 150 300', what='Practice')
+    choose_row(0 if a.arcade else 6, 'Arcade Battle' if a.arcade else 'Practice')
+    until(lambda s: not like(s, 'offline_practice.png', (160, 100, 760, 470)), 'A 150 300', what='the mode')
     until(lambda s: green(s, 380, 252), 'RIGHT 120 200', what='Solo highlighted')
     drive('A 150 300', frames=1)            # Solo; then wait (a second A would pick a fighter)
     for _ in range(20):
         shot = drive(frames=1)
-        if like(shot, 'select_practice.png', LABEL_BOX) and not green(shot, 380, 252):
+        if like(shot, 'select_practice.png', GRID_BOX, 25) and not green(shot, 380, 252) and \
+                (a.arcade or like(shot, 'select_practice.png', LABEL_BOX)):
             break
         if green(shot, 380, 252):
             drive('A 150 300', frames=1)
@@ -137,6 +141,13 @@ def main():
         drive('UP 100 200', frames=1)
     if a.stop == 'select':
         drive(frames=1, out=a.out)
+        return
+    if a.arcade:
+        drive('A 150 300', frames=1)
+        stem = os.path.splitext(a.out)[0]
+        for i in range(40):
+            drive('A 150 300' if i in (3, 6) else 'RIGHT 10 10', frames=1, out='%s_%02d.png' % (stem, i))
+        print(stem + '_NN.png')
         return
     until(lambda s: green(s, 765, 252) or green(s, 915, 252), 'A 150 300', what='the dummy\'s Tag/Solo prompt')
     until(lambda s: green(s, 915, 252), 'RIGHT 120 200', what='the dummy\'s Solo highlighted')

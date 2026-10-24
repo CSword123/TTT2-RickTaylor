@@ -38,7 +38,6 @@ void Log(const char* fn, uint32_t arg, uint32_t lr, uint32_t result)
         if (Trace()) Log(label, arg, lr, ctx.r3.u32);                          \
     }
 
-ROSTER_TRACE(822763B0, "select_to_record")  // +8 value -> record index
 ROSTER_TRACE(82276158, "id_to_code")        // internal id -> code string
 
 PPC_FUNC(sub_82288018)                      // (this, ?, select id): a name built from the select-id string table
@@ -107,4 +106,29 @@ PPC_FUNC(sub_82D2E228)                      // zlib's crc32(crc, buf, len)
     const uint32_t p = ctx.r4.u32, n = ctx.r5.u32, lr = uint32_t(ctx.lr);
     __imp__sub_82D2E228(ctx, base);
     LogCrc("crc32", base, p, n, lr, ctx.r3.u32);
+}
+
+extern "C" PPC_FUNC(__imp__sub_8225D460);
+PPC_FUNC(sub_8225D460)                      // the game's assert (expression r3, function r4, file r5, line r6): logged
+{
+    auto str = [&](uint32_t p) { return p > 0x1000 && p < 0xF0000000 ? reinterpret_cast<const char*>(base + p) : "?"; };
+    static std::atomic<int> logged{ 0 };
+    if (logged++ < 60)
+        std::fprintf(stderr, "[assert] '%.120s' in '%.160s' %s:%u lr=%08X\n", str(ctx.r3.u32), str(ctx.r4.u32),
+                     str(ctx.r5.u32), ctx.r6.u32, uint32_t(ctx.lr));
+    __imp__sub_8225D460(ctx, base);
+}
+
+extern "C" PPC_FUNC(__imp__sub_822813D8);
+PPC_FUNC(sub_822813D8)                      // a mode manager's member record (manager r3, member r4): logged
+{
+    const uint32_t mgr = ctx.r3.u32, i = ctx.r4.u32, lr = uint32_t(ctx.lr);
+    __imp__sub_822813D8(ctx, base);
+    if (!Trace()) return;
+    static std::mutex m;
+    static std::set<std::tuple<uint32_t, uint32_t, uint32_t>> seen;
+    std::lock_guard l(m);
+    if (seen.size() < 2000 && seen.emplace(i, ctx.r3.u32, lr).second)
+        std::fprintf(stderr, "[roster] member record mgr %08X [%u] = %d lr=%08X (at %08X)\n", mgr, i, int(ctx.r3.u32),
+                     lr, mgr + 4 * (108 + i));
 }
