@@ -9,7 +9,8 @@ placed and scaled like a bust: head top at HEAD_TOP, the picture's width scaled 
 portrait_1p.png and portrait_2p.png, and the game's single-file form of each (a NUT like Marduk's own,
 `ric/portrait_1p.nut` and `ric/portrait_2p.nut` under <out>/files, for ttt2rick.ttt2.overlay; recomp/runtime/
 rick_slot.cpp gives them to the screens that show Rick), and a green-framed one like the game's alternate
-(illustrated) portraits, portrait_green.png / ric/portrait_green.nut.
+(illustrated) portraits, portrait_green.png / ric/portrait_green.nut. The select screen's container gets Rick's two
+after its own (frames 118 and 119, CONTAINER_RICK; key_6ccdfc60.bin), which rick_slot.cpp shows for his row.
 """
 import os
 import struct
@@ -26,11 +27,28 @@ from ..ttt2.petexy import nut
 CONTAINER = 0x6CCDFC60
 KEY_TABLE = 0x820CD408          # in the game image: 59 x {player 1 key, player 2 key}, by UI row
 DONOR_ROW = 18                  # Marduk's UI row
+CONTAINER_RICK = 118            # his frames in the container (player 1, player 2): rick_slot.cpp kPortraitFrame
 SIZE = (356, 612)
 PANEL = (24, 24, 27, 240)       # the panels' dark grey
 SCALE = 0.70                    # of the picture's pixels
 HEAD_TOP, CENTRE_X = 18, 182    # where the picture's top and centre land
 FRINGE = 5                      # px of the picture's dark cut-out edge trimmed off
+
+
+def container_items(d):
+    n, = struct.unpack_from('>I', d, 0)
+    return [d[o:o + s] for o, s in (struct.unpack_from('>II', d, 4 + 8 * i) for i in range(n))]
+
+
+def build_container(items):
+    head = 4 + 8 * len(items)
+    out = bytearray(head + (-head % 16))
+    struct.pack_into('>I', out, 0, len(items))
+    for i, it in enumerate(items):
+        out += bytes(-len(out) % 16)
+        struct.pack_into('>II', out, 4 + 8 * i, len(out), len(it))
+        out += it
+    return bytes(out)
 
 
 def portraits(arc):
@@ -136,6 +154,16 @@ def main(game, picture, out):
         if side == 0:
             donor['textures'][0] = dict(t, mips=nut.make_texture(green, t['gidx'], t['fmt'], mips=len(t['mips']))['mips'])
             open(os.path.join(out, 'files', 'ric', 'portrait_green.nut'), 'wb').write(xbox.write_nut(donor))
+    # the select screen's container: Rick's two frames after its own, made from Marduk's
+    items = container_items(arc.read(CONTAINER))
+    if len(items) != CONTAINER_RICK:
+        raise ValueError('the portrait container has %d frames, not %d' % (len(items), CONTAINER_RICK))
+    for side, img in enumerate(textures):
+        donor = xbox.read_nut(items[2 * DONOR_ROW + side])
+        t = donor['textures'][0]
+        donor['textures'][0] = dict(t, mips=nut.make_texture(img, t['gidx'], t['fmt'], mips=len(t['mips']))['mips'])
+        items.append(xbox.write_nut(donor))
+    open(os.path.join(out, 'files', 'key_%08x.bin' % CONTAINER), 'wb').write(build_container(items))
     print(os.path.join(out, 'portrait_1p.png'), os.path.join(out, 'portrait_2p.png'))
     return textures
 

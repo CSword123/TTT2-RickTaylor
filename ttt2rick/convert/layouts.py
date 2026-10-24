@@ -29,6 +29,9 @@ LAYOUTS = 'data007.bin'
 FACE = (466, 134, 98)
 # Rick's select grid cell (rick_slot.cpp: top row, right of Violet): above Eddy's panel, in the top row
 CELL = {'anchor': 'edd', 'columns': 0, 'grid_row': 0}
+# The select grids' icons (56 x 88) are close-ups of the face (eyes 40% down, eyes to chin 30% of the height,
+# measured on the game's): closer than Layout's general head-and-shoulders place for tall pictures
+ICON_SIZE, ICON_PLACE = (56, 88), (0.50, 0.40, 0.30, 'bust')
 
 
 class Sources:
@@ -40,6 +43,8 @@ class Sources:
 
     def framed(self, place, w, h, mirror=False):
         """The picture scaled and moved so that the face sits at `place` in a w x h picture."""
+        if (w, h) == ICON_SIZE:
+            place = ICON_PLACE
         fx, fy, chin, _ = place
         img = self.picture
         ex, ey, ec = FACE

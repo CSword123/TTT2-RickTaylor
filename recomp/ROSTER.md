@@ -91,6 +91,8 @@ writes them as `ric/portrait_1p.nut` / `ric/portrait_2p.nut`. The game shows por
   `sub_82276380` by record) was about Rick. Loading and VS screens: done.
 - the fights' HUD: container `7C476BDE` by numbers from `0x82DDD2F0` (59 x {name, face 1p, face 2p}); Rick's three are
   appended as 259-261 (`ttt2rick.convert.hud`) and given for Marduk's in `sub_823D11B8` the same way. Done.
-- still Marduk's: the select screen's big hover portrait. `sub_8262BEE0` lists container `6CCDFC60`'s frames per
-  player (vectors {first, last, end} at object +4 and +24, by UI row) and `sub_826409E0(screen, slot, row)` shows
-  one from a row saved frames earlier, so it needs per-member tracking (Petexy's `kSelectQueries`), not the flag.
+- the select screen's big portrait: `sub_8262BEE0` lists container `6CCDFC60`'s frames per player (vectors {first,
+  last, end} at lister +4 and +24, by UI row); `sub_8262B2D0(lister, row, slot = player * 2 + member)` shows one.
+  Rick's two frames are appended as 118/119 (`ttt2rick.convert.portrait`); while a slot whose member is Rick (its
+  record at player object +348/+352, before a pick the cursor's id from `sub_8227AE48`; player object
+  `*(*(screen + 148) + 48 / 56)`, screen from `sub_826409E0`) is drawn, Marduk's row holds Rick's frame. Done.

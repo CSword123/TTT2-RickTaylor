@@ -516,3 +516,83 @@ PPC_FUNC(sub_8227CFC0)
         std::fprintf(stderr, "[rick] member byte %08X = %u\n", g_pickByte, kId);
     }
 }
+
+// The select screen's big portraits: sub_8262BEE0 (lister r3) lists container 6CCDFC60's frames, by UI row, in two
+// vectors {first, last, end} at +4 (player 1's frames) and +24 (player 2's); sub_8262B2D0 (lister r3, row r4, slot
+// r5: player * 2 + member) shows one. Rick's two frames follow the container's own (118, 119: ttt2rick.convert.
+// portrait); while a slot showing Rick is drawn, Marduk's row of its vector holds Rick's frame. Whose a slot is
+// comes from the select screen (sub_826409E0: screen r3): its player object (*(*(screen + 148) + 48 / 56)) holds
+// the members' records at +348 / +352, and before a pick the cursor's fighter id (sub_8227AE48(player)).
+namespace {
+constexpr uint32_t kPortraitKey = 0x6CCDFC60, kPortraitFrame = 118;
+uint32_t g_lister = 0, g_rickFrames[2] = {}, g_selectScreen = 0;
+}
+extern "C" PPC_FUNC(__imp__sub_8262BEE0);
+extern "C" PPC_FUNC(__imp__sub_82A827F8);
+PPC_FUNC(sub_8262BEE0)
+{
+    const uint32_t lister = ctx.r3.u32;
+    __imp__sub_8262BEE0(ctx, base);
+    if (!(On() && g.ready)) return;
+    GWrite32(base, g.scratch + 512, kPortraitKey);                      // the container, as the lister finds it
+    Call(ctx, base, __imp__sub_82A827F8, { GRead32(base, lister + 44), g.scratch + 512 });
+    const uint32_t entry = ctx.r3.u32, container = entry ? GRead32(base, entry) : 0;
+    g_lister = 0;
+    if (!container || GRead32(base, container) < kPortraitFrame + 2) return;
+    for (uint32_t p = 0; p < 2; ++p)
+        g_rickFrames[p] = container + GRead32(base, container + 4 + 8 * (kPortraitFrame + p));
+    g_lister = lister;
+    std::fprintf(stderr, "[rick] select portraits: lister %08X, container %08X\n", lister, container);
+}
+
+extern "C" PPC_FUNC(__imp__sub_826409E0);
+PPC_FUNC(sub_826409E0)
+{
+    g_selectScreen = ctx.r3.u32;
+    __imp__sub_826409E0(ctx, base);
+}
+
+extern "C" PPC_FUNC(__imp__sub_8227AE48);
+bool SlotIsRick(PPCContext& ctx, uint8_t* base, uint32_t slot)
+{
+    if (!g_selectScreen) return false;
+    const uint32_t players = GRead32(base, g_selectScreen + 148);
+    const uint32_t player = players ? GRead32(base, players + (slot < 2 ? 48 : 56)) : 0;
+    if (!player) return false;
+    const uint32_t record = GRead32(base, player + 348 + 4 * (slot & 1));
+    bool rick = Ours(record);
+    uint32_t id = ~0u;
+    if (!rick && (slot & 1) == 0)
+    {
+        Call(ctx, base, __imp__sub_8227AE48, { player });
+        id = ctx.r3.u32;
+        rick = id == kId;
+    }
+    static uint32_t logged = 0;
+    if (std::getenv("TTT2_RICK_TRACE") && logged++ < 60)
+        std::fprintf(stderr, "[rick] portrait slot %u: record %u, cursor id %d -> %s\n", slot, record, int(id),
+                     rick ? "Rick" : "not Rick");
+    return rick;
+}
+
+extern "C" PPC_FUNC(__imp__sub_8262B2D0);
+PPC_FUNC(sub_8262B2D0)
+{
+    const uint32_t lister = ctx.r3.u32, row = ctx.r4.u32, slot = ctx.r5.u32;
+    uint32_t at = 0, theirs = 0;
+    if (On() && g_lister == lister && row == kDonorUiRow && slot < 4)
+    {
+        const PPCContext saved = ctx;
+        const bool rick = SlotIsRick(ctx, base, slot);
+        ctx = saved;
+        if (rick)
+        {
+            const uint32_t first = GRead32(base, lister + (slot < 2 ? 4 : 24));
+            at = first + 4 * row;
+            theirs = GRead32(base, at);
+            GWrite32(base, at, g_rickFrames[slot < 2 ? 0 : 1]);
+        }
+    }
+    __imp__sub_8262B2D0(ctx, base);
+    if (at) GWrite32(base, at, theirs);
+}
