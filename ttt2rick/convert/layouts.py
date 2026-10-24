@@ -8,6 +8,7 @@ shows. Every layout with Marduk's labels gets Rick's beside them (`chara_face_ri
 made like the other fighters' at that place (ttt2rick.ttt2.petexy.art.Layout: frame and background from theirs, his
 picture placed so his face sits where theirs do), on a new texture page appended to the layout's container. The
 names (`chara_name_s_`, the frames' `p<n>_chara_waku_` labels end on the name) are RICK in the title's lettering.
+The select grids get Rick's panel (`face_panel_ric`, Eddy's cloned with his picture) in his cell, above Eddy's.
 recomp/runtime/rick_slot.cpp turns Marduk's labels into these while the game shows Rick.
 Writes <out>/files/key_<layout>.bin and key_<container>.bin (for ttt2rick.ttt2.overlay).
 """
@@ -26,6 +27,8 @@ CODE, NAME = 'ric', 'RICK'
 LAYOUTS = 'data007.bin'
 # In the picture (work/art/rick_taylor.png): the eyes' centre and the eyes-to-chin distance, in its pixels
 FACE = (466, 134, 98)
+# Rick's select grid cell (rick_slot.cpp: top row, right of Violet): above Eddy's panel, in the top row
+CELL = {'anchor': 'edd', 'columns': 0, 'grid_row': 0}
 
 
 class Sources:
@@ -101,11 +104,12 @@ def main(game, picture, out):
     count = 0
     for i, d in blobs.items():
         lm = lmb.Lmb.read(d)
-        if not any(art.code_label(s, CODE) for s in lm.symbols):
+        if not any(art.code_label(s, CODE) for s in lm.symbols) and 'face_panel_' + CELL['anchor'] not in lm.symbols:
             continue
         textures = xbox.read_nut(arc.entry(LAYOUTS, i + 1))
-        layout = art.Layout(lm, textures, sources, CODE, codes)
+        layout = art.Layout(lm, textures, sources, CODE, codes, CELL)
         layout.add_labels()
+        layout.add_cell()
         if not layout.changed:
             continue
         pages = layout.pages()

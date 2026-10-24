@@ -1,7 +1,7 @@
 """The 2D screens' per-fighter labels and pictures: Petexy's Wii U port (MIT, see LICENSE), tools/characters/ttt2char/
 convert/art.py @ 581c048: the picture helpers, compose, the title's lettering (Letters) and Layout (a layout with a
 fighter's labels added). Changes: the donor fighter is DONOR (Marduk, not Paul: the fighter whose labels are copied
-for the new one); the select grid's new cell (add_cell) is left out; Sources comes from the caller
+for the new one); the new grid cell's place (Layout's `cell`) comes from the caller; Sources comes from the caller
 (ttt2rick.convert.layouts), and nut is the Xbox 360 NTXR adapter's texture maker.
 """
 import re
@@ -16,6 +16,10 @@ PAUL = DONOR                      # (the name the copied code uses)
 # Labels whose pictures the game puts in itself (the big portraits' frames): copied, not drawn; they end on
 # the fighter's name, which is drawn.
 GAME_DRAWN = re.compile(r'^p[12]_chara_waku_$')
+# The select grids' new cell (add_cell): at a fighter's panel (`anchor`) moved some columns over (the columns'
+# pitch: between the panels of PITCH_FROM), in the top row (the height of GRID_BESIDE's panel) or the anchor's own row.
+GRID_BESIDE = 'vio'
+PITCH_FROM = ('rog', 'rav')       # grid row 1, columns 0 and 1
 PAGE_WIDTH = 1024                 # new texture pages: at most this wide, as tall as needed
 
 # Where a face sits in each kind of picture: (eyes' centre x, y as fractions of the picture, eyes-to-chin as a
@@ -280,8 +284,9 @@ def code_label(label, code):
 class Layout:
     """One LMB layout and its texture container, with the fighter's labels and pictures added."""
 
-    def __init__(self, lm, textures, sources, code, codes):
+    def __init__(self, lm, textures, sources, code, codes, cell=None):
         self.lm, self.textures, self.sources, self.code, self.codes = lm, textures, sources, code, codes
+        self.cell = cell              # the new grid cell: {anchor, columns, grid_row} (add_cell)
         self.atlases = {t['gidx']: t for t in textures['textures']}
         self.decoded = {}
         self.new = []                  # (shape id, Paul's shape, picture): pictures waiting for a page
@@ -399,6 +404,81 @@ class Layout:
         self.lm.add_shape(cid, [lmb.Graphic(like.graphics[0].atlas, [list(v) for v in like.graphics[0].verts],
                                             list(like.graphics[0].indices), like.graphics[0].fill)])
         return cid
+
+    # -- the select grid's new cell
+    def add_cell(self):
+        lm = self.lm
+        below = lm.find_named('face_panel_' + self.cell['anchor'])
+        beside = lm.find_named('face_panel_' + GRID_BESIDE)
+        pitch = [lm.find_named('face_panel_' + c) for c in PITCH_FROM]
+        if not below or not beside or not all(pitch) or lm.find_named('face_panel_' + self.code):
+            return
+        grid, _, place = below[0]
+        panel = lm.char(place.char)
+        other = lm.char(beside[0][2].char)
+        if not isinstance(panel, lmb.Sprite) or not isinstance(other, lmb.Sprite):
+            return
+        # the panel's own picture: the shapes it shows that the neighbour's panel does not
+        theirs = {c.char for _, c in other.all_children() if isinstance(c, lmb.Place)}
+        char_map = {}
+        stack = self.panel_pictures()
+        for _, c in panel.all_children():
+            shape = lm.char(c.char) if isinstance(c, lmb.Place) else None
+            if isinstance(shape, lmb.Shape) and shape.id not in theirs and shape.id not in char_map:
+                pic, size = self.shape_picture(shape)
+                mine = self.sources.framed(face_place(*size), size[0], size[1])
+                ok = stack is not None and stack.shape[1:3] == (size[1], size[0])
+                char_map[shape.id] = self.new_shape(shape, compose(stack, mine) if ok else mine)
+        sid = lm.take_id(below=grid.id, above=max(panel.id, max(char_map.values())))
+        lm.clone_sprite(panel.id, sid, char_map)
+        # in the grid: everything the panel below does, at a new depth after the panels, in the top row
+        panels = [c.depth for _, c in grid.all_children() if isinstance(c, lmb.Place) and c.mode == lmb.MODE_PLACE
+                  and c.name and lm.symbols[c.name].startswith('face_panel_')]
+        depth = max(panels) + 1
+        lm.insert_depth(grid, depth)
+        xs = [lm.matrices[p[0][2].posid][4] if p[0][2].posflags == lmb.POS_MATRIX else None for p in pitch]
+        top = lm.matrices[beside[0][2].posid][5] if beside[0][2].posflags == lmb.POS_MATRIX else None
+        if top is None or None in xs:
+            return
+        dx = (xs[1] - xs[0]) * self.cell['columns']
+        in_top = self.cell['grid_row'] == 0
+
+        def to_cell(m):
+            m[4] += dx
+            if in_top:
+                m[5] = top
+            return m
+
+        def to_cell_position(p):
+            p[0] += dx
+            if in_top:
+                p[1] = top
+            return p
+        lm.clone_depth(grid, place.depth, depth, char=sid, name='face_panel_' + self.code,
+                       matrix_fn=to_cell, position_fn=to_cell_position)
+        self.changed = True
+
+    def panel_pictures(self):
+        """Every fighter's grid panel picture (the shape its panel shows and the next fighter's does not)."""
+        lm = self.lm
+        sprites = []
+        for code in self.codes:
+            hit = lm.find_named('face_panel_' + code)
+            if hit and isinstance(lm.char(hit[0][2].char), lmb.Sprite):
+                sprites.append(lm.char(hit[0][2].char))
+        shapes = []
+        for i, sp in enumerate(sprites):
+            nxt = sprites[(i + 1) % len(sprites)]
+            theirs = {c.char for _, c in nxt.all_children() if isinstance(c, lmb.Place)}
+            own = [lm.char(c.char) for _, c in sp.all_children() if isinstance(c, lmb.Place)
+                   and isinstance(lm.char(c.char), lmb.Shape) and c.char not in theirs]
+            if own:
+                shapes.append(own[0])
+        if len(shapes) < 3:
+            return None
+        pics = [self.shape_picture(s) for s in shapes]
+        size = max(set(p[1] for p in pics), key=[p[1] for p in pics].count)
+        return np.stack([p[0] for p in pics if p[1] == size])
 
     # -- texture pages
     def pages(self):
