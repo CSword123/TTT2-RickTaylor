@@ -231,9 +231,33 @@ RECORD_FIELD(822761A0, r)
 RECORD_FIELD(822762A8, GRead32(base, r + 4))
 RECORD_FIELD(822762E0, g_proxy ? kDonorId : GRead32(base, r + 0))
 RECORD_FIELD(82276310, GRead32(base, r + 12))
-RECORD_FIELD(82276380, GRead32(base, r + 8))
 RECORD_FIELD(82276408, GRead32(base, r + 80))
 #undef RECORD_FIELD
+
+// The fights' HUD (sub_823D55A8 faces, sub_823D6738 names) asks a member's UI row of its record (sub_82276380) and
+// takes its pictures' numbers from a table by row (0x82DDD2F0: {name, face 1p, face 2p}) to sub_823D11B8 (HUD
+// container 7C476BDE = resource 176). Rick's record answers Marduk's row; until the next record asked, Marduk's
+// numbers are Rick's own, appended to the container by ttt2rick.convert.hud.
+namespace {
+constexpr uint32_t kHudResource = 176, kHudDonor[3] = { 48, 123, 182 }, kHudRick[3] = { 259, 260, 261 };
+bool g_hudRick = false;
+}
+PPC_FUNC(sub_82276380)                      // record -> +8 UI row
+{
+    g_hudRick = Ours(ctx.r3.u32);
+    if (g_hudRick) { ctx.r3.u64 = GRead32(base, RecordAddr(ctx.r3.u32) + 8); return; }
+    LogOddRecord("82276380", ctx.r3.u32, uint32_t(ctx.lr));
+    __imp__sub_82276380(ctx, base);
+}
+
+extern "C" PPC_FUNC(__imp__sub_823D11B8);
+PPC_FUNC(sub_823D11B8)                      // a HUD picture (r4 resource, r5 number, ...)
+{
+    if (g_hudRick && ctx.r4.u32 == kHudResource)
+        for (uint32_t k = 0; k < 3; ++k)
+            if (ctx.r5.u32 == kHudDonor[k]) { ctx.r5.u64 = kHudRick[k]; break; }
+    __imp__sub_823D11B8(ctx, base);
+}
 
 PPC_FUNC(sub_82276270)                      // the record's +20 function: Marduk's
 {

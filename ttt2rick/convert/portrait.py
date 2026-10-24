@@ -4,8 +4,8 @@ python -m ttt2rick.convert.portrait <game folder> <picture.png (RGBA, transparen
 
 The frames and panels come from the game's own portraits (container 6CCDFC60, data003: 118 NUTs, two per UI
 position): the median of each side's 59 gives the frame glow, the frame splits the outside from the panel, and the
-panel gets one dark colour. Rick goes over both, as the game's fighters do (their heads and shoulders cross the
-frame), placed and scaled like a bust: head top at HEAD_TOP, the picture's width scaled by SCALE. Writes
+panel gets one dark colour. Rick is cut to the panel and the frame drawn over him (nothing of him outside it),
+placed and scaled like a bust: head top at HEAD_TOP, the picture's width scaled by SCALE. Writes
 portrait_1p.png and portrait_2p.png, and the game's single-file form of each (a NUT like Marduk's own,
 `ric/portrait_1p.nut` and `ric/portrait_2p.nut` under <out>/files, for ttt2rick.ttt2.overlay; recomp/runtime/
 rick_slot.cpp gives them to the screens that show Rick), and a green-framed one like the game's alternate
@@ -30,7 +30,6 @@ SIZE = (356, 612)
 PANEL = (24, 24, 27, 240)       # the panels' dark grey
 SCALE = 0.70                    # of the picture's pixels
 HEAD_TOP, CENTRE_X = 18, 182    # where the picture's top and centre land
-OVERFLOW_FADE = (250, 380)      # outside the frame, Rick fades out between these rows (the game's busts do)
 FRINGE = 5                      # px of the picture's dark cut-out edge trimmed off
 
 
@@ -89,14 +88,16 @@ def compose(med, frame, inside, picture, mirror):
     layer = Image.new('RGBA', SIZE)
     layer.paste(pic, (CENTRE_X - pic.width // 2, HEAD_TOP))
     fig = np.asarray(layer).astype(np.float32)
-    y = np.arange(frame.shape[0], dtype=np.float32)[:, None]
-    ramp = np.clip((OVERFLOW_FADE[1] - y) / (OVERFLOW_FADE[1] - OVERFLOW_FADE[0]), 0, 1)
-    within = np.asarray(Image.fromarray(((inside | frame) * 255).astype(np.uint8)).filter(
-        ImageFilter.GaussianBlur(3)), np.float32) / 255.0
-    fig[..., 3] *= np.maximum(within, ramp)
+    within = np.asarray(Image.fromarray((inside * 255).astype(np.uint8)).filter(ImageFilter.MinFilter(3)).filter(
+        ImageFilter.GaussianBlur(1)), np.float32) / 255.0
+    fig[..., 3] *= within                       # only inside the frame
     fa = fig[..., 3:] / 255.0
     rgb = fig[..., :3] * fa + base[..., :3] * (1 - fa)
     alpha = np.maximum(base[..., 3:], fig[..., 3:])
+    edge = np.where(frame[..., None], med, 0).astype(np.float32)        # the frame over him
+    ea = edge[..., 3:] / 255.0
+    rgb = edge[..., :3] * ea + rgb * (1 - ea)
+    alpha = np.maximum(alpha, edge[..., 3:])
     out = np.concatenate([rgb, alpha], -1).clip(0, 255).astype(np.uint8)
     return out[:, ::-1] if mirror else out
 
