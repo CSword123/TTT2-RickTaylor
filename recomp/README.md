@@ -1,6 +1,6 @@
 # TTT2-Recomp integration
 
-Target: [thatcalikid760/TTT2-Recomp](https://github.com/thatcalikid760/TTT2-Recomp) at commit `b57c4bf` (v0.2.1). It is a
+Target: [thatcalikid760/TTT2-Recomp](https://github.com/thatcalikid760/TTT2-Recomp) at commit `ec40e8b` (v0.2.2). It is a
 fork of shihabal3amri's Xbox 360 port: a XenonRecomp static recompilation for Windows, built with MSVC + clang-cl.
 
 ```
