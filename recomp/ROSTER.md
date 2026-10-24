@@ -96,3 +96,21 @@ writes them as `ric/portrait_1p.nut` / `ric/portrait_2p.nut`. The game shows por
   Rick's two frames are appended as 118/119 (`ttt2rick.convert.portrait`); while a slot whose member is Rick (its
   record at player object +348/+352, before a pick the cursor's id from `sub_8227AE48`; player object
   `*(*(screen + 148) + 48 / 56)`, screen from `sub_826409E0`) is drawn, Marduk's row holds Rick's frame. Done.
+
+### Stance (not working yet)
+
+`ttt2rick.convert.idle` retargets Splatterhouse's `combatidle` (Havok, `ttt2rick.splatterhouse.hkx`) to the TTT2
+skeleton as a raw animation and writes `RIC2` = Marduk's motion pack with body animation 0x26 (the standing move
+`Va_sKAM00_`'s `ikvt_kamae010`, played as 0x4026) replaced. Channel 1 (the root) is multiplied by the skeleton's
+scale in game (checked: Marduk's stance's feet stand on the floor only so). Not in use: Rick still shares Marduk's
+motion row 17. Findings (2026-10-23):
+- the player set-up (`sub_82276628`, run with Marduk's record) copies the record's id and motion row into the player
+  (+84, +80) and loads the motion data (`sub_8231C718`) before returning; the game reads the motion-row table only at
+  boot (data watch on rows 17 and 66 after boot: no reads) and keeps loaded keys in resource nodes;
+- motion row 66 is used by ids 59/60 and by the set-up for id 49; rows 57, 58, 60-65 are used by no record;
+- loading Rick through row 65 (Marduk's record carrying row 65 during his set-up) made him kick and jump on his own
+  from the round's start, with any motion pack (even Marduk's, byte for byte) and the `RIC1` moveset copy or
+  Marduk's: the row itself, not the data. Rows 58-65 are the mob (`Zako`) rows;
+- in memory no MOTA has Marduk's 606 animations (mid-fight: MOTAs of 1875, 448, 684), so the loaded animations are
+  not the pack file as it is. Next: find where a player's animation id (0x4026) is resolved to its data, and give
+  Rick's player his stance there.

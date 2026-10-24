@@ -39,6 +39,21 @@ GLOW_DARK = 0.15                        # the rest of the eyeball: a shadowed so
 GLOW_SHRINK = 0.6                       # the glowing iris, as a share of the texture's iris size
 GLOW_YELLOW = np.array([255, 230, 60], np.float32)     # the iris at least this bright
 SKIN_TEXTURE = 'rick_body_base.dds'     # meshes coloured by it get the skin material, the others cloth
+# Splatterhouse's colour maps have their creases' shading painted in, and TTT2's lighting darkens them again: in game
+# Rick's skin came out at 0.67 of Marduk's brightness and redder. His skin-coloured pixels (skin_weight) are graded
+# by the ratio of Marduk's skin colour to his (medians, per channel), in the textures of his skin and head meshes;
+# blood, the mask and cloth keep theirs. Graded only that far he still rendered at 0.81 of Marduk and a little redder
+# (the same with a flat normal map, so it is the colour, which every stage's light multiplies): RENDER_TRIM scales
+# the target further, measured in game (2026-10-23). It stays close to uniform: the game's skin shading reddens
+# every skin a lot (Marduk renders at G/R 0.57 from a texture at 0.76), and the user's picture of Rick has Marduk's
+# texture hue (G/R 0.75, B/R 0.61), so a target with another hue (tried: matching the picture in the rendered
+# image) turns him grey.
+RENDER_TRIM = np.array([1.20, 1.25, 1.30])
+# The neck shares the mask's texture, whose skin starts from another tone: every texture's skin is graded to the
+# same colour (the body's, graded; TextureBank skin_target), and the neck gets the skin material like the body.
+SKIN_MESHES = {'rick_neck'}
+SKIN_SHARING = {'rick_head_geo'}         # its texture is the neck's: graded the same, so the two share it
+MARDUK_SKIN = [0x10400B9D, 0x10400B97, 0x10400BA0]     # mar.nut: the arm, neck and leg skin colours
 # material templates: kind -> (entry name or key, mesh, polygon); the cloth is a costume part of Jun's (her model pack,
 # member 95), which Petexy's added fighters use too, with the NUTs holding its textures
 TEMPLATES = {'skin': (DONOR + '.nud', 'ude_A_O_OBJ', 0), 'overlay': (DONOR + '.nud', 'cha:kao_O_OBJ', 3),
@@ -151,9 +166,23 @@ def pow2(w, h, cap=MAX_TEX):
     return min(cap, p2(w * s)), min(cap, p2(h * s))
 
 
+def skin_weight(rgb):
+    """0..1 per pixel: how much a pixel is skin (warm, r > g > b, green 55-95% of red, not too dark)."""
+    r, g, b = (rgb[..., i].astype(np.float32) for i in range(3))
+    ratio = g / np.maximum(r, 1.0)
+    w = np.clip((ratio - 0.50) / 0.08, 0, 1) * np.clip((0.97 - ratio) / 0.05, 0, 1)
+    w *= np.clip((r - 45.0) / 25.0, 0, 1) * ((r >= g) & (g >= b))
+    return w
+
+
+def skin_median(rgb):
+    return np.median(rgb.reshape(-1, rgb.shape[-1])[skin_weight(rgb).reshape(-1) > 0.5][:, :3], 0)
+
+
 class TextureBank:
-    def __init__(self):
+    def __init__(self, skin_target=None):
         self.images, self.fmts, self.keys = [], [], {}
+        self.skin_target = skin_target        # RGB the skin of colour(..., skin=True) is graded to (its median)
 
     def add(self, key, rgba, fmt):
         if key not in self.keys:
@@ -162,12 +191,19 @@ class TextureBank:
             self.fmts.append(fmt)
         return self.keys[key]
 
-    def colour(self, path, alpha):
+    def colour(self, path, alpha, skin=False):
         im = Image.open(path).convert('RGBA')
         a = np.array(im.resize(pow2(*im.size), Image.LANCZOS))
         if not alpha:
             a[..., 3] = 255
-        return self.add(('img', path, alpha), a, 2 if alpha else 0)
+        if skin and self.skin_target is not None:      # a few passes: grading changes which pixels count as skin
+            src = a[..., :3].astype(np.float32)
+            w = skin_weight(a)[..., None]
+            gain = self.skin_target / skin_median(a)
+            for _ in range(4):
+                a[..., :3] = np.clip(src * (1 + w * (gain - 1)), 0, 255).astype(np.uint8)
+                gain = gain * self.skin_target / skin_median(a)
+        return self.add(('img', path, alpha, skin), a, 2 if alpha else 0)
 
     def normal(self, path):
         """RGB normal map (R = X, G = Y) -> TTT2's BC3 layout (A = X, G = Y flipped), as Petexy does."""
@@ -313,7 +349,11 @@ def convert(game, rick_dir, tex_dir, out):
     jmap = np.array([bidx[WEIGHTS.get(n, 'KOSHI_jnt')] for n in names])
 
     tmpl = templates(arc)
-    bank = TextureBank()
+    mtex = {t['gidx']: t for t in xbox.read_nut(arc.read_name(DONOR + '.nut'))['textures']}
+    theirs = skin_median(np.concatenate([xbox.decode_texture(mtex[g]).reshape(-1, 4) for g in MARDUK_SKIN]))
+    mine = skin_median(np.asarray(Image.open(os.path.join(tex_dir, SKIN_TEXTURE.replace('.dds', '.png'))).convert('RGBA')))
+    bank = TextureBank(skin_target=mine * (theirs / mine * RENDER_TRIM))
+    print('skin grade (Marduk / Rick x render trim, RGB):', np.round(theirs / mine * RENDER_TRIM, 3))
     meshes, preview, images = [], [], {}
     for k, m in enumerate(info['meshes']):
         pos, nrm = skin(D, data['mesh%d_positions' % k].astype(np.float64), data['mesh%d_normals' % k].astype(
@@ -332,7 +372,8 @@ def convert(game, rick_dir, tex_dir, out):
             for q in range(4):
                 bones[v, q], wts[v, q] = (top[q][0], top[q][1] / s) if q < len(top) else (top[0][0], 0.0)
         kind = 'overlay' if m['name'] in OVERLAY_MESHES else 'glow' if m['name'] in GLOW_MESHES \
-            else 'skin' if m['textures']['base'] == SKIN_TEXTURE else 'cloth'
+            else 'skin' if m['textures']['base'] == SKIN_TEXTURE or m['name'] in SKIN_MESHES \
+            else 'cloth'
         mat, means, fmts = tmpl[kind]
         mat = json.loads(json.dumps(mat, default=lambda b: b.hex()))     # deep copy (bytes -> hex, restored below)
         for t, src in zip(mat['textures'], tmpl[kind][0]['textures']):
@@ -343,7 +384,7 @@ def convert(game, rick_dir, tex_dir, out):
             if i == 0 and kind == 'glow':
                 t['id'] = bank.glow(base)
             elif i == 0:
-                t['id'] = bank.colour(base, kind == 'overlay')
+                t['id'] = bank.colour(base, kind == 'overlay', skin=kind == 'skin' or m['name'] in SKIN_SHARING)
             elif normal and abs(int(means[i][1]) - 128) < 16 and abs(int(means[i][3]) - 128) < 16:   # a normal map slot
                 t['id'] = bank.normal(os.path.join(tex_dir, normal.replace('.dds', '.png')))
             else:

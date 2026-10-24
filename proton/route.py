@@ -157,8 +157,8 @@ def main():
         for _ in range(3):
             drive('LEFT 100 200', frames=1)
     drive('A 150 500', frames=4)
-    for _ in range(a.stage_right):
-        drive('RIGHT 100 200', frames=1)
+    for _ in range(a.stage_right):           # one stage a press; the list animates, so wait a few frames each
+        drive('RIGHT 100 300', frames=4)
     drive('A 150 2000', frames=25, out=a.out)
     print(a.out)
 

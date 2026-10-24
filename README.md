@@ -44,6 +44,7 @@ python3 recomp/install.py <TTT2-Recomp checkout>       # see recomp/README.md
 .venv/bin/python -m ttt2rick.ttt2.overlay <game folder> restore                              # Marduk back
 # Rick in his own slot (TTT2_RICK=1, recomp/runtime): pictures from work/art/rick_taylor.png, then his files
 for m in portrait hud layouts; do .venv/bin/python -m ttt2rick.convert.$m <game folder> work/art/rick_taylor.png work/ttt2/rick_slot/art; done
+.venv/bin/python -m ttt2rick.convert.idle <game folder> <splatterhouse assets/data> work/ttt2/rick_as_mar work/ttt2/rick_slot/art   # his own stance
 .venv/bin/python -m ttt2rick.convert.slot <game folder> work/ttt2/rick_as_mar work/ttt2/rick_slot work/ttt2/rick_slot/art
 .venv/bin/python -m ttt2rick.ttt2.overlay <game folder> install work/ttt2/rick_slot/files
 ```
