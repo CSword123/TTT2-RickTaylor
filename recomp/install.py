@@ -11,7 +11,7 @@ import os
 import subprocess
 import sys
 
-PINNED = 'a60b825'
+PINNED = 'b35355f'
 HERE = os.path.dirname(os.path.abspath(__file__))
 PATCHES = os.path.join(HERE, 'patches')
 

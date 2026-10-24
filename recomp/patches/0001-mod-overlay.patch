@@ -1,8 +1,8 @@
 diff --git a/port/src/runtime/kernel/kernel_io.cpp b/port/src/runtime/kernel/kernel_io.cpp
-index e3c62e8..0079eea 100644
+index 111ca83..b03f2c5 100644
 --- a/port/src/runtime/kernel/kernel_io.cpp
 +++ b/port/src/runtime/kernel/kernel_io.cpp
-@@ -31,6 +31,28 @@ static const char* VfsRoot()
+@@ -34,6 +34,28 @@ static const char* VfsRoot()
  }
  #define VFS_ROOT VfsRoot()
  
@@ -31,7 +31,7 @@ index e3c62e8..0079eea 100644
  struct FileRecord
  {
      HANDLE handle;
-@@ -141,6 +163,7 @@ static std::string ResolvePath(std::string p)
+@@ -144,6 +166,7 @@ static std::string ResolvePath(std::string p)
          std::string rest = p.substr(colon + 1);
          for (auto& c : rest) if (c == '\\') c = '/';
          while (!rest.empty() && rest[0] == '/') rest.erase(0, 1);
@@ -39,7 +39,7 @@ index e3c62e8..0079eea 100644
          return std::string(VFS_ROOT) + "/update" + (rest.empty() ? "/" : "/" + rest);
      }
      if (colon != std::string::npos)
-@@ -154,6 +177,7 @@ static std::string ResolvePath(std::string p)
+@@ -157,6 +180,7 @@ static std::string ResolvePath(std::string p)
      for (auto& c : p) if (c == '\\') c = '/';
      while (!p.empty() && p[0] == '/') p.erase(0, 1);
  
@@ -48,14 +48,14 @@ index e3c62e8..0079eea 100644
      std::string full = std::string(VFS_ROOT) + "/" + p;
      if (std::filesystem::exists(full, ec)) return full;
 diff --git a/port/src/runtime/main.cpp b/port/src/runtime/main.cpp
-index ca1d988..2eed77e 100644
+index 8e9c97c..9a2be21 100644
 --- a/port/src/runtime/main.cpp
 +++ b/port/src/runtime/main.cpp
-@@ -363,6 +363,7 @@ static std::string InstalledLayout(int argc)
+@@ -384,6 +384,7 @@ static std::string InstalledLayout(int argc)
          if (!std::getenv(name)) _putenv_s(name, value.c_str());
      };
      setDefault("TTT2_VFS_ROOT", narrow(dir + L"game"));
 +    setDefault("TTT2_MOD_ROOT", narrow(dir + L"mods"));
      setDefault("TTT2_GPU_HW", "1");
      setDefault("TTT2_FBDUMP", "0");
-     const HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
+     // The log stays where it goes only for a writable file (a launcher's redirect, as "Start TTT2 with
