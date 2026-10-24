@@ -111,5 +111,18 @@ The earlier failures (2026-10-23) came from the table's wrong base: the stance w
 row's motion key was written into the next row, so Rick on row 65 ran the mob row's own animations (he kicked and
 jumped on his own). The row number itself is not special.
 
-Still open: only the standing animation is his. Marduk's moves start and end in Marduk's guard (the game blends
+Guard (2026-10-24): Splatterhouse's `block` (his held block), 40 frames at 60 fps, is appended to `RIC2`'s body
+MOTA as animation 684 (moves play it as `0x42AC`); `ttt2rick.convert.slot` gives it to the 15 standing guard moves
+of `RIC1` (`sGrd_*` playing the common `Bco_gurd_*`, ids `0x8xxx`, which every fighter shares and so stay as they are).
+A blocked attack runs the defender's own move of that number, so any attacker's blocked hits show Rick's block; the
+guards go back to the stance at their frame 19. Checked in Practice with the dummy on Controller (Action Settings 1;
+player 2 presses START to take it): Marduk's blocked jabs put Rick in his block, then back in his stance. Crouching
+guards (`cGrd_*`) are still the common ones.
+
+Feet: a skeleton's parameters 1-4 are the ankles' and toes' heights over the soles (times its scale): every title
+skeleton has its ASHI / TSUMASAKI joints there (a few mm lower in some: shoe soles). Rick's are his own (153.5, 65.5;
+`ttt2rick.convert.rick` foot_heights), not Marduk's 130 / 50, which would sink his taller feet ~3 cm wherever the game
+puts feet on the floor itself. Not yet seen on uneven ground.
+
+Still open: only the standing and guard animations are his. Marduk's moves start and end in Marduk's guard (the game blends
 between them); other idles (crouch, the walk cycles, tag-in) are Marduk's.

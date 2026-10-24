@@ -1,4 +1,4 @@
-"""Rick's own fighting stance (Splatterhouse's combatidle) as his TTT2 standing animation, in his own motion pack.
+"""Rick's own fighting stance (Splatterhouse's combatidle) and guard (block) as TTT2 animations, in his own motion pack.
 
 python -m ttt2rick.convert.idle <game folder> <Splatterhouse data folder> <converted Rick (convert.rick's out)> <out dir>
 
@@ -15,8 +15,9 @@ python -m ttt2rick.convert.idle <game folder> <Splatterhouse data folder> <conve
    The ground displacement, turn and spine parameter (channels 0, 2, 6) are Marduk's stance's first frame.
 4. Frames: Havok's 30 a second, sampled at TTT2's 60.
 Out: files/key_<RICK_MOTIONS>.bin, Marduk's motion pack with the standing animation (body animation STAND_ANIM,
-which Marduk's standing move Va_sKAM00_ plays as 0x4026) replaced by Rick's, for his own motion row (rick_slot.cpp
-kRow, kRickMotions); and idle_preview.png (Havok's pose and the TTT2 skeleton's, side by side).
+which Marduk's standing move Va_sKAM00_ plays as 0x4026) replaced by Rick's and his guard appended (GUARD_ANIM, which
+ttt2rick.convert.slot gives his standing guard moves), for his own motion row (rick_slot.cpp kRow, kRickMotions); and
+idle_preview.png / guard_preview.png (Havok's pose and the TTT2 skeleton's, side by side).
 """
 import json
 import os
@@ -29,11 +30,14 @@ from PIL import Image, ImageDraw
 from ..splatterhouse import extract, hkx
 from ..ttt2 import fk, xbox
 from ..ttt2.archive import Archives
-from ..ttt2.petexy import animation, bone
+from ..ttt2.petexy import animation, bone, motion
 from . import rick as rickconv
 
 RICK_NIF_DIR = 'characters/rick_havok/xbox360'
 IDLE = 'combatidle.hkx'
+GUARD = 'block.hkx'              # his held block: the animation of his standing guards (ttt2rick.convert.slot)
+GUARD_FRAMES = 40                # at FPS; Marduk's standing guards go back to the stance at their frame 19
+GUARD_ANIM = 684                 # the guard's body animation, after Marduk's 684: moves play it as 0x4000 + 684
 MARDUK_MOTIONS = 0xC903BD27      # motion row 17's motion pack (684 animations; 0x75F7BE7E is row 18's, Jack-6)
 RICK_MOTIONS = 0x52494332        # "RIC2": rick_slot.cpp kRickMotions
 STAND_ANIM = 0x26                # Marduk's standing animation (body MOTA index; his moves name it 0x4026)
@@ -111,83 +115,99 @@ def preview(frames_h, names_h, parents_h, frames_t, parents_t, path):
     img.save(path)
 
 
+class Retarget:
+    """What every animation's retarget needs: Rick's Havok skeleton and reference pose, the repose deltas
+    ttt2rick.convert.rick made, his TTT2 skeleton, and Marduk's stance (its descriptors and constant channels)."""
+
+    def __init__(self, arc, folder, rick_out):
+        self.folder = folder
+        self.sk = hkx.skeleton(hkx.Packfile(open(os.path.join(folder, 'rick_skeleton.hkx'), 'rb').read()))
+        self.hidx = {n: i for i, n in enumerate(self.sk['names'])}
+        self.Gref = havok_worlds(self.sk, self.sk['reference'])
+        rick_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(rick_out))), 'rick', 'brawler')
+        info = json.load(open(os.path.join(rick_dir, 'model.json')))
+        data = np.load(os.path.join(rick_dir, 'model.npz'))
+        names, parents = info['skeleton']['names'], info['skeleton']['parents']
+        donor = xbox.read_bone(arc.read_name(rickconv.DONOR + '.bon'))
+        dW = bone.world_matrices(donor)
+        dnames = [n[4:] if n.startswith('cha:') else n for n in donor['names']]
+        self.D = rickconv.repose(names, parents, data['skeleton_world'][:, :3, 3].astype(np.float64),
+                                 {n: dW[i][:3, 3] for i, n in enumerate(dnames)})
+        self.nidx = {n: i for i, n in enumerate(names)}
+        self.bon = xbox.read_bone(open(os.path.join(rick_out, 'files', rickconv.DONOR + '.bon'), 'rb').read())
+        self.stand = marduk_stand(arc)
+
+    def __call__(self, name, frames=None):
+        """(raw animation, Havok joint positions per frame, TTT2 joint positions per frame) of Rick's Havok
+        animation `name`, its first `frames` frames at FPS (all by default)."""
+        sk, hidx, Gref, D, nidx, bon = self.sk, self.hidx, self.Gref, self.D, self.nidx, self.bon
+        an = hkx.animation(hkx.Packfile(open(os.path.join(self.folder, name), 'rb').read()))
+        local = sample(an, sk, FPS)[:frames]
+        G = np.array([havok_worlds(sk, f) for f in local])
+        bi = fk.bone_index(bon)
+        Wbind = fk.world(bon, {}, bon['t'][0])
+        scale = float(bon['scale'])
+        desc = self.stand['descriptors']
+        values = np.zeros((len(local), len(desc), 3))
+        chan_of = {bi[b]: c for c, b in fk.CHANNEL_BONES.items()}
+        root_j = hidx[DRIVERS['HARA_ROT1']]
+        # Havok's root faces its own way in the animation: its mean turn about the vertical (from the reference) is
+        # taken out, so Rick faces his opponent as the TTT2 skeleton does
+        fwd = np.array([G[f, root_j, :3, :3] @ Gref[root_j, :3, :3].T @ [0, 0, 1] for f in range(len(local))]).mean(0)
+        yaw = np.arctan2(fwd[0], fwd[2])
+        c, s_ = np.cos(-yaw), np.sin(-yaw)
+        Y = np.array([[c, 0, s_], [0, 1, 0], [-s_, 0, c]])
+        G = G.copy()
+        G[:, :, :3, :3] = np.einsum('ij,fnjk->fnik', Y, G[:, :, :3, :3])
+        G[:, :, :3, 3] = np.einsum('ij,fnj->fni', Y, G[:, :, :3, 3] - Gref[root_j, :3, 3]) + Gref[root_j, :3, 3]
+        print('%s: root turn taken out: %.1f degrees' % (name, np.degrees(yaw)))
+        tposes = []
+        for f in range(len(local)):
+            target = {}
+            for c, b in fk.CHANNEL_BONES.items():
+                j = DRIVERS[b]
+                R = G[f, hidx[j], :3, :3] @ Gref[hidx[j], :3, :3].T @ D[nidx[j], :3, :3].T @ Wbind[bi[b], :3, :3]
+                target[bi[b]] = R
+            root = bon['t'][0] + (G[f, root_j, :3, 3] - Gref[root_j, :3, 3])
+            # top-down: each animated bone's local rotation under its parent's animated world
+            n = len(bon['parent'])
+            w = np.zeros((n, 4, 4))
+            rots = {}
+            for i in range(n):
+                m = bone.local_matrix(bon, i)
+                if i == 0:
+                    m[:3, 3] = root
+                p = bon['parent'][i]
+                pw = np.eye(4) if p < 0 else w[p]
+                if i in target:
+                    m[:3, :3] = pw[:3, :3].T @ target[i]
+                    rots[i] = m[:3, :3]
+                w[i] = pw @ m
+            tposes.append(w[:, :3, 3].copy())
+            values[f] = self.stand['values'][0]
+            for i, R in rots.items():
+                values[f, chan_of[i]] = bone.euler_xyz_from_matrix(R)
+            values[f, 1] = root / scale * np.array([1, 1, -1])
+        return raw_animation(desc, values), [g[:, :3, 3] for g in G], tposes
+
+
 def main(game, splatter, rick_out, out):
     arc = Archives(game)
     folder = os.path.join(splatter, RICK_NIF_DIR) if os.path.isdir(os.path.join(splatter, RICK_NIF_DIR)) else splatter
-    sk = hkx.skeleton(hkx.Packfile(open(os.path.join(folder, 'rick_skeleton.hkx'), 'rb').read()))
-    an = hkx.animation(hkx.Packfile(open(os.path.join(folder, IDLE), 'rb').read()))
-    hidx = {n: i for i, n in enumerate(sk['names'])}
-    frames = sample(an, sk, FPS)
-    G = np.array([havok_worlds(sk, f) for f in frames])
-    Gref = havok_worlds(sk, sk['reference'])
-
-    # the repose deltas, as ttt2rick.convert.rick made them
-    rick_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(rick_out))), 'rick', 'brawler')
-    info = json.load(open(os.path.join(rick_dir, 'model.json')))
-    data = np.load(os.path.join(rick_dir, 'model.npz'))
-    names, parents = info['skeleton']['names'], info['skeleton']['parents']
-    donor = xbox.read_bone(arc.read_name(rickconv.DONOR + '.bon'))
-    dW = bone.world_matrices(donor)
-    dnames = [n[4:] if n.startswith('cha:') else n for n in donor['names']]
-    D = rickconv.repose(names, parents, data['skeleton_world'][:, :3, 3].astype(np.float64),
-                        {n: dW[i][:3, 3] for i, n in enumerate(dnames)})
-    nidx = {n: i for i, n in enumerate(names)}
-
-    bon = xbox.read_bone(open(os.path.join(rick_out, 'files', rickconv.DONOR + '.bon'), 'rb').read())
-    bi = fk.bone_index(bon)
-    Wbind = fk.world(bon, {}, bon['t'][0])
-    scale = float(bon['scale'])
-
-    stand = marduk_stand(arc)
-    desc = stand['descriptors']
-    values = np.zeros((len(frames), len(desc), 3))
-    chan_of = {bi[b]: c for c, b in fk.CHANNEL_BONES.items()}
-    root_j = hidx[DRIVERS['HARA_ROT1']]
-    # Havok's root faces its own way in the animation: its mean turn about the vertical (from the reference) is
-    # taken out, so Rick faces his opponent as the TTT2 skeleton does
-    fwd = np.array([G[f, root_j, :3, :3] @ Gref[root_j, :3, :3].T @ [0, 0, 1] for f in range(len(frames))]).mean(0)
-    yaw = np.arctan2(fwd[0], fwd[2])
-    c, s_ = np.cos(-yaw), np.sin(-yaw)
-    Y = np.array([[c, 0, s_], [0, 1, 0], [-s_, 0, c]])
-    G = G.copy()
-    G[:, :, :3, :3] = np.einsum('ij,fnjk->fnik', Y, G[:, :, :3, :3])
-    G[:, :, :3, 3] = np.einsum('ij,fnj->fni', Y, G[:, :, :3, 3] - Gref[root_j, :3, 3]) + Gref[root_j, :3, 3]
-    print('root turn taken out: %.1f degrees' % np.degrees(yaw))
-    tposes = []
-    for f in range(len(frames)):
-        target = {}
-        for c, b in fk.CHANNEL_BONES.items():
-            j = DRIVERS[b]
-            R = G[f, hidx[j], :3, :3] @ Gref[hidx[j], :3, :3].T @ D[nidx[j], :3, :3].T @ Wbind[bi[b], :3, :3]
-            target[bi[b]] = R
-        root = bon['t'][0] + (G[f, root_j, :3, 3] - Gref[root_j, :3, 3])
-        # top-down: each animated bone's local rotation under its parent's animated world
-        n = len(bon['parent'])
-        w = np.zeros((n, 4, 4))
-        local = {}
-        for i in range(n):
-            m = bone.local_matrix(bon, i)
-            if i == 0:
-                m[:3, 3] = root
-            p = bon['parent'][i]
-            pw = np.eye(4) if p < 0 else w[p]
-            if i in target:
-                m[:3, :3] = pw[:3, :3].T @ target[i]
-                local[i] = m[:3, :3]
-            w[i] = pw @ m
-        tposes.append(w[:, :3, 3].copy())
-        values[f] = stand['values'][0]
-        for i, R in local.items():
-            values[f, chan_of[i]] = bone.euler_xyz_from_matrix(R)
-        values[f, 1] = root / scale * np.array([1, 1, -1])
-    anim = raw_animation(desc, values)
-    pack = with_animation(arc.read(MARDUK_MOTIONS), STAND_ANIM, anim)
+    retarget = Retarget(arc, folder, rick_out)
+    stance, hp, tp = retarget(IDLE)
+    guard, ghp, gtp = retarget(GUARD, GUARD_FRAMES)
+    pack = with_animation(arc.read(MARDUK_MOTIONS), STAND_ANIM, stance)
+    pack, index = with_appended(pack, guard)
+    if index != GUARD_ANIM:
+        raise ValueError('the guard went to body animation %d, not GUARD_ANIM %d' % (index, GUARD_ANIM))
     os.makedirs(os.path.join(out, 'files'), exist_ok=True)
     open(os.path.join(out, 'files', 'key_%08x.bin' % RICK_MOTIONS), 'wb').write(pack)
-    hp = [G[f][:, :3, 3] for f in range(len(frames))]
-    preview(hp, sk['names'], sk['parents'], tposes, bon['parent'], os.path.join(out, 'idle_preview.png'))
-    print('%s: %d frames at %.0f fps (Havok %d at %.0f), motion pack %d bytes' % (
-        out, len(frames), FPS, an['frames'], an['fps'], len(pack)))
+    names, parents = retarget.sk['names'], retarget.sk['parents']
+    preview(hp, names, parents, tp, retarget.bon['parent'], os.path.join(out, 'idle_preview.png'))
+    preview(ghp, names, parents, gtp, retarget.bon['parent'], os.path.join(out, 'guard_preview.png'))
+    print('%s: stance %d frames, guard %d frames (body animation %d = %#x) at %.0f fps, motion pack %d bytes' % (
+        out, len(hp), len(ghp), GUARD_ANIM, 0x4000 + GUARD_ANIM, FPS, len(pack)))
 
 
 def marduk_stand(arc):
@@ -227,6 +247,14 @@ def with_animation(pack, index, anim):
         out += it
     return bytes(out)
 
+
+
+def with_appended(pack, anim):
+    """(the motion pack with `anim` appended to its body MOTA, the new animation's index)."""
+    items = [pack[o:o + s] for o, s in motion.pack_items(pack)]
+    index = len(motion.mota_offsets(items[0])[1])
+    items[0] = motion.extend_mota(items[0], [anim])
+    return motion.build_pack(items), index
 
 if __name__ == '__main__':
     if len(sys.argv) != 5:

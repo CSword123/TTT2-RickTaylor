@@ -3,7 +3,8 @@
 python -m ttt2rick.convert.slot <game folder> <converted Rick (ttt2rick.convert.rick's out dir)> <out dir> [art dir]
 
 Writes <out>/files: ric.nud/.nut/.bon/.xml (the converted body files, renamed), key_52494331.bin (Marduk's moveset with
-Rick's id in its header) and ric/alo/... (copies of Marduk's effect files and their textures: the title loads a
+Rick's id in its header and his guard: the standing guards, sGrd_* moves playing the common Bco_gurd_* animations,
+play his own, ttt2rick.convert.idle GUARD_ANIM) and ric/alo/... (copies of Marduk's effect files and their textures: the title loads a
 fighter's effects as <code>/alo/<name>.alo, with its own code); with an art dir (ttt2rick.convert.portrait's out),
 also its files/ (Rick's portraits).
 """
@@ -12,7 +13,8 @@ import struct
 import sys
 
 from ..ttt2.archive import Archives
-from ..ttt2.petexy import itemdb
+from ..ttt2.petexy import itemdb, motbin
+from .idle import GUARD_ANIM
 
 CODE, DONOR = 'ric', 'mar'
 ID, DONOR_ID, DONOR_ROW = 64, 17, 17
@@ -21,6 +23,7 @@ MOTION_ROWS = 0x820A24B0                  # {motion pack, moveset, move list} by
                                           # (game/tekken.img, loaded at 0x82000000)
 IMAGE_BASE = 0x82000000
 ALO_END = b'AL_EFFECT\0'
+BODY_ANIM = 0x4000                        # a move's animation id: 0x4000 + body animation (0x8000 +: the common ones)
 
 
 def moveset(arc, image):
@@ -30,6 +33,13 @@ def moveset(arc, image):
     if ids != (DONOR_ID - 1, -(DONOR_ID - 1), DONOR_ID, -DONOR_ID):
         raise ValueError('motion row %d is not Marduk\'s moveset (ids %s)' % (DONOR_ROW, ids))
     struct.pack_into('>4h', ms, 0xF8 + 64, ID - 1, -(ID - 1), ID, -ID)
+    m = motbin.read(bytes(ms))
+    table = motbin.BASE + m.table_info['moves'][0]
+    guards = [i for i in range(len(m.tables['moves']))
+              if m.move_name(i).startswith('sGrd_') and m.anim_name(i).startswith('Bco_gurd_')]
+    for i in guards:
+        struct.pack_into('>I', ms, table + i * motbin.TTT2['moves'][0] + 8, BODY_ANIM + GUARD_ANIM)
+    print('his guard (%#x) in %d standing guard moves' % (BODY_ANIM + GUARD_ANIM, len(guards)))
     return bytes(ms)
 
 

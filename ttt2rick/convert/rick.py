@@ -152,6 +152,19 @@ def repose(names, parents, P, donor_pos):
     return D
 
 
+def foot_heights(skel):
+    """The skeleton's parameters 1-4: the ankles' and toes' heights over the soles (L, R, L, R), in units the game
+    multiplies by the skeleton's scale. Every title skeleton has its ASHI / TSUMASAKI joints at about these times its
+    scale (some a few mm lower: shoe soles), so they are where the game puts the feet on the floor; the donor's would
+    sink Rick's taller feet. His soles stand at y = 0."""
+    W = bone.world_matrices(skel)
+    names = [n[4:] if n.startswith('cha:') else n for n in skel['names']]
+    params = list(skel['params'])
+    for k, b in enumerate(('ASHI_L_jnt', 'ASHI_R_jnt', 'TSUMASAKI_L_jnt', 'TSUMASAKI_R_jnt')):
+        params[1 + k] = round(float(W[names.index(b)][1, 3] / skel['scale']), 1)
+    skel['params'] = params
+
+
 def skin(D, positions, normals, joints, weights):
     M = np.einsum('vk,vkij->vij', weights, D[joints])
     p = np.einsum('vij,vj->vi', M[:, :3, :3], positions) + M[:, :3, 3]
@@ -345,6 +358,7 @@ def convert(game, rick_dir, tex_dir, out):
           'world': np.array([np.vstack([np.hstack([np.eye(3), P2[names.index(r)][:, None]]), [0, 0, 0, 1]])
                              for r in ANCHOR.values()])}
     skel = skeleton.build(t7, donor)
+    foot_heights(skel)
     bidx = {n: i for i, n in enumerate(dnames)}
     jmap = np.array([bidx[WEIGHTS.get(n, 'KOSHI_jnt')] for n in names])
 
