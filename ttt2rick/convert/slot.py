@@ -17,13 +17,14 @@ from ..ttt2.petexy import itemdb
 CODE, DONOR = 'ric', 'mar'
 ID, DONOR_ID, DONOR_ROW = 64, 17, 17
 MOVESET_KEY = 0x52494331                  # rick_slot.cpp kMovesetKey
-MOTION_ROWS = 0x820A24B4                  # in the game image (game/tekken.img, loaded at 0x82000000)
+MOTION_ROWS = 0x820A24B0                  # {motion pack, moveset, move list} by row, in the game image
+                                          # (game/tekken.img, loaded at 0x82000000)
 IMAGE_BASE = 0x82000000
 ALO_END = b'AL_EFFECT\0'
 
 
 def moveset(arc, image):
-    key = struct.unpack_from('>I', image, MOTION_ROWS - IMAGE_BASE + 12 * DONOR_ROW)[0]
+    key = struct.unpack_from('>I', image, MOTION_ROWS - IMAGE_BASE + 12 * DONOR_ROW + 4)[0]
     ms = bytearray(arc.read(key))
     ids = struct.unpack_from('>4h', ms, 0xF8 + 64)
     if ids != (DONOR_ID - 1, -(DONOR_ID - 1), DONOR_ID, -DONOR_ID):

@@ -2,8 +2,9 @@
 // runtime/src/title/roster.cpp does this for its character packs). TTT2_RICK=1 turns it on.
 //
 // Rick is internal id 64 (the title's ids end at 62; 63 means random/none), records 140 and 141 (copies of
-// Marduk's, held here), motion row 58 (a row no record uses) and code "ric": his body files ric.nud/.nut/.bon/.xml
-// come from the title update's overlay (ttt2rick.ttt2.overlay), his moveset is Marduk's under a key of its own.
+// Marduk's, held here), motion row 57 (a row no record uses) and code "ric": his body files ric.nud/.nut/.bon/.xml
+// come from the title update's overlay (ttt2rick.ttt2.overlay), his moveset is Marduk's under a key of its own and
+// his motion pack Marduk's with his own stance (ttt2rick.convert.idle).
 // Addresses: recomp/ROSTER.md.
 #include "kernel_shared.h"
 #include "guest_heap.h"
@@ -38,14 +39,15 @@ extern "C" PPC_FUNC(__imp__sub_82276440);   // motion row -> record
 extern "C" PPC_FUNC(__imp__sub_82331B50);   // a player's fighter from a record: loadPlayer ... <code>
 
 namespace {
-constexpr uint32_t kId = 64, kRecord0 = 140, kRow = 17, kDonorId = 17, kDonorRecord0 = 36, kDonorRow = 17;
+constexpr uint32_t kId = 64, kRecord0 = 140, kRow = 57, kDonorId = 17, kDonorRecord0 = 36, kDonorRow = 17;
 constexpr uint32_t kRecords = 0x82DC21B8, kRecordSize = 84, kTitleRecords = 139;
-constexpr uint32_t kMotionRows = 0x820A24B4;            // 68 x {moveset, move list, motion pack}
+constexpr uint32_t kMotionRows = 0x820A24B0;            // 68 x {motion pack, moveset, move list} (sub_82590690)
 constexpr uint32_t kCodes = 0x82DD1CC8;                  // 63 x char*, by internal id
 constexpr uint32_t kGrids = 0x8200C8BC;                  // {cells, count} by mode
 constexpr uint32_t kRegistryPtr = 0x82EE0B5C;
 constexpr uint32_t kMovesetKey = 0x52494331;             // "RIC1": Marduk's moveset with Rick's id, from the overlay
-constexpr uint32_t kDonorMoveList = 0x68A7CEF7, kDonorMotions = 0x75F7BE7E;
+constexpr uint32_t kRickMotions = 0x52494332;            // "RIC2": Marduk's motion pack with Rick's stance
+constexpr uint32_t kDonorMoveList = 0x68A7CEF7;
 
 // Marduk's registry entries (sub_8244E618), replayed for "ric" with his own body files' keys.
 enum class Op { Code, File, Part };
@@ -137,9 +139,9 @@ void Prepare(uint8_t* base)
     if (kRow != 17)                          // a row of his own (not while he shares Marduk's)
     {
         const uint32_t row = kMotionRows + 12 * kRow;
-        GWrite32(base, row + 0, kMovesetKey);
-        GWrite32(base, row + 4, kDonorMoveList);
-        GWrite32(base, row + 8, kDonorMotions);
+        GWrite32(base, row + 0, kRickMotions);
+        GWrite32(base, row + 4, kMovesetKey);
+        GWrite32(base, row + 8, kDonorMoveList);
     }
 
     // The full grids (modes 1 and 2: 62 cells, the top row columns 3-18) get a 63rd cell: Rick at column 19 of
@@ -366,12 +368,30 @@ PPC_FUNC(sub_82276628)                      // sets a player (r3) up from its re
 {
     const uint32_t player = ctx.r3.u32, record = GRead32(base, player + 88);
     if (!Ours(record)) { __imp__sub_82276628(ctx, base); return; }
-    GWrite32(base, player + 88, kDonorRecord0 + (record - kRecord0));
+    const uint32_t donor = kDonorRecord0 + (record - kRecord0), donorRow = kRecords + donor * kRecordSize + 12;
+    GWrite32(base, player + 88, donor);
+    GWrite32(base, donorRow, kRow);                         // it loads the motion data by the record's row
     __imp__sub_82276628(ctx, base);
+    GWrite32(base, donorRow, kDonorRow);
     GWrite32(base, player + 88, record);
     GWrite32(base, player + 84, kId);
     GWrite32(base, player + 80, kRow);
     std::fprintf(stderr, "[rick] player %08X set up from record %u\n", player, record);
+}
+
+extern "C" PPC_FUNC(__imp__sub_82590690);
+PPC_FUNC(sub_82590690)                      // (holder r3, row r4): its three resources from the row's keys
+{
+    if (On() && (ctx.r4.u32 == kRow || ctx.r4.u32 == kDonorRow))
+    {
+        static uint32_t logged = 0;
+        const uint32_t row = kMotionRows + 12 * ctx.r4.u32;
+        if (logged++ < 20)
+            std::fprintf(stderr, "[rick] motion row %u: %08X %08X %08X (holder %08X, lr %08X)\n", ctx.r4.u32,
+                         GRead32(base, row), GRead32(base, row + 4), GRead32(base, row + 8), ctx.r3.u32,
+                         uint32_t(ctx.lr));
+    }
+    __imp__sub_82590690(ctx, base);
 }
 
 extern "C" PPC_FUNC(__imp__sub_8227DC40);

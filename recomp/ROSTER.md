@@ -19,7 +19,7 @@ Rebuilding after a runtime change takes about 20 s.
 |---|---|
 | `0x82DD1CC8` | **the fighter code table**, 63 x char*, indexed by internal id: 0-58 the selectable fighters in select order (mar 17, mok 18, jac 19, ..., bcv 56, seb 57, tig 58), 59-62 dek/pra/zka/zkb (practice dummy, empty dummy, Fight Lab mobs). Read by `sub_82331B50` (bound: id < 63). Followed by 7 menu labels and the 59 full names. |
 | `0x82DC21B8` | **character records**, 139 x 84 bytes: +0 internal id, +4 costume slot (0/1; 2 = extra), +8 select id (the UI row: `id_to_select`), +12 UI place, +16 sex, +20 a function pointer, +80 enabled. Two per fighter (0-117 = ids 0-58), 118-121 ids 59-62, 122-138 extras. |
-| `0x820A24B4` | **motion rows**, 68 x {moveset key (COM, data006), move list key (MVLT), motion pack key (data005)}; row 17 Marduk. Rows 58-65 hold generic `[Zako00]`-`[Zako07]` movesets. |
+| `0x820A24B0` | **motion rows**, 68 x {motion pack key (MOTA pack, data005), moveset key (COM, data006), move list key (MVLT)}, read by `sub_82590690(holder, row)` when a fighter loads (row 66: two keys of its own); row 17 Marduk = {`C903BD27` (684 animations), `7491FE62`, `68A7CEF7`}. Rows 58-65 hold generic `[Zako00]`-`[Zako07]` movesets. Until 2026-10-24 this file put the table at `0x820A24B4`, one word late, so every "motion pack" key was the next row's (`75F7BE7E` is Jack-6's). |
 | `0x8200C8BC` | **select grids** by mode: {cells, count} pairs; cell = 32 bytes {internal id (63 random), 51, up, down, left, right, column, row}. Mode 0 `0x82DC4F60` (46 cells, the two lower rows), modes 1-2 `0x82DC5520` / `0x82DC5CE0` (62 cells: + the top row, columns 3-18), modes 3-5 smaller. Marduk is cell 16. Writing a cell's id at run time (before the select screen opens) changes who that cell picks: tested, id 58 picked Tiger with his portrait, name, model and moves. |
 | `0x8200BD24` | a stale 66-entry {code, id} table (`sub_82276158`), with codes z00-z07 no fighter uses: **not** the game's id mapping (it disagrees from id 18 on). |
 
@@ -97,20 +97,19 @@ writes them as `ric/portrait_1p.nut` / `ric/portrait_2p.nut`. The game shows por
   record at player object +348/+352, before a pick the cursor's id from `sub_8227AE48`; player object
   `*(*(screen + 148) + 48 / 56)`, screen from `sub_826409E0`) is drawn, Marduk's row holds Rick's frame. Done.
 
-### Stance (not working yet)
+### Stance (working, 2026-10-24)
 
 `ttt2rick.convert.idle` retargets Splatterhouse's `combatidle` (Havok, `ttt2rick.splatterhouse.hkx`) to the TTT2
-skeleton as a raw animation and writes `RIC2` = Marduk's motion pack with body animation 0x26 (the standing move
-`Va_sKAM00_`'s `ikvt_kamae010`, played as 0x4026) replaced. Channel 1 (the root) is multiplied by the skeleton's
-scale in game (checked: Marduk's stance's feet stand on the floor only so). Not in use: Rick still shares Marduk's
-motion row 17. Findings (2026-10-23):
-- the player set-up (`sub_82276628`, run with Marduk's record) copies the record's id and motion row into the player
-  (+84, +80) and loads the motion data (`sub_8231C718`) before returning; the game reads the motion-row table only at
-  boot (data watch on rows 17 and 66 after boot: no reads) and keeps loaded keys in resource nodes;
-- motion row 66 is used by ids 59/60 and by the set-up for id 49; rows 57, 58, 60-65 are used by no record;
-- loading Rick through row 65 (Marduk's record carrying row 65 during his set-up) made him kick and jump on his own
-  from the round's start, with any motion pack (even Marduk's, byte for byte) and the `RIC1` moveset copy or
-  Marduk's: the row itself, not the data. Rows 58-65 are the mob (`Zako`) rows;
-- in memory no MOTA has Marduk's 606 animations (mid-fight: MOTAs of 1875, 448, 684), so the loaded animations are
-  not the pack file as it is. Next: find where a player's animation id (0x4026) is resolved to its data, and give
-  Rick's player his stance there.
+skeleton as a raw animation and writes `RIC2` = Marduk's motion pack (`C903BD27`) with body animation 0x26 (his
+guard stance, which his standing move `Va_sKAM00_` plays as 0x4026) replaced. Channel 1 (the root) is multiplied by
+the skeleton's scale in game. Rick has motion row 57 (no record uses it; not a Zako row), written by `rick_slot.cpp`
+as {`RIC2`, `RIC1`, Marduk's move list}; the player set-up (`sub_82276628`, run with Marduk's record) loads the
+motion data by the record's row, so Marduk's record carries row 57 during Rick's set-up. In Practice Rick stands in
+his Splatterhouse stance, Marduk's moves play from it, and the Marduk opponent keeps his own.
+
+The earlier failures (2026-10-23) came from the table's wrong base: the stance was built on Jack-6's pack, and a
+row's motion key was written into the next row, so Rick on row 65 ran the mob row's own animations (he kicked and
+jumped on his own). The row number itself is not special.
+
+Still open: only the standing animation is his. Marduk's moves start and end in Marduk's guard (the game blends
+between them); other idles (crouch, the walk cycles, tag-in) are Marduk's.

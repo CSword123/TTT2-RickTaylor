@@ -34,7 +34,7 @@ from . import rick as rickconv
 
 RICK_NIF_DIR = 'characters/rick_havok/xbox360'
 IDLE = 'combatidle.hkx'
-MARDUK_MOTIONS = 0x75F7BE7E      # motion row 17's motion pack
+MARDUK_MOTIONS = 0xC903BD27      # motion row 17's motion pack (684 animations; 0x75F7BE7E is row 18's, Jack-6)
 RICK_MOTIONS = 0x52494332        # "RIC2": rick_slot.cpp kRickMotions
 STAND_ANIM = 0x26                # Marduk's standing animation (body MOTA index; his moves name it 0x4026)
 FPS = 60.0
