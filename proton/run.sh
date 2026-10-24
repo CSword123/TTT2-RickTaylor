@@ -7,5 +7,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 STEAM="$HOME/.local/share/Steam"
 export STEAM_COMPAT_DATA_PATH="$HERE/pfx"
 export STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM"
+# Microsoft's d3dcompiler_47.dll next to the program, when there is one: Wine's own compiler (vkd3d-shader) rejects
+# shaders TTT2-Recomp 0.2.0 translates (E5000/E5002/E5008), and their draws (the fighters' bodies) are skipped.
+export WINEDLLOVERRIDES="d3dcompiler_47=n,b${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
 PROTON="${PROTON:-$STEAM/steamapps/common/Proton 10.0/proton}"
 exec python3 "$PROTON" waitforexitandrun "$@"

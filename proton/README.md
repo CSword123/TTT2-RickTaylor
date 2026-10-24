@@ -32,4 +32,10 @@ profile A (first run: auto-save, create save data, update and unlock notices: A 
 DOWN x5 A (Practice), RIGHT A (solo), Marduk is the bald fighter right of King in the right half's middle row, A,
 RIGHT A (solo dummy), A, stage A. Presses sent while a menu animates are dropped: send them in small steps.
 
+**TTT2-Recomp 0.2.0 needs Microsoft's `d3dcompiler_47.dll`** (64-bit) in the install folder, next to the exe. With
+Wine's own compiler its new shader translation fails to compile (`[gpu-hw] pixel shader ... failed to compile` in
+`dev.log`, E5000/E5002/E5008) and the fighters' bodies are not drawn. `run.sh` makes Wine prefer a DLL found there.
+It is redistributable and ships with many games; the copy used here is 10.0.19041.685 (from the user's own Killer
+Instinct install, 4524496 bytes). Not needed for 0.1.9.
+
 The release exe does not have this project's patches (`recomp/patches/`); those need a source build (Windows).
