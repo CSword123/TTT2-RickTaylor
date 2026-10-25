@@ -18,9 +18,10 @@ python -m ttt2rick.convert.idle <game folder> <Splatterhouse data folder> <conve
    The ground displacement, turn and spine parameter (channels 0, 2, 6) are Marduk's stance's first frame.
 4. Frames: Havok's 30 a second, sampled at TTT2's 60.
 Out: files/key_<RICK_MOTIONS>.bin, Marduk's motion pack with the standing animation (body animation STAND_ANIM,
-which Marduk's standing move Va_sKAM00_ plays as 0x4026) replaced by Rick's and his guard appended (GUARD_ANIM, which
-ttt2rick.convert.slot gives his standing guard moves), for his own motion row (rick_slot.cpp kRow, kRickMotions); and
-idle_preview.png / guard_preview.png (Havok's pose and the TTT2 skeleton's, side by side).
+which Marduk's standing move Va_sKAM00_ plays as 0x4026) replaced by Rick's, his guard appended (GUARD_ANIM, which
+ttt2rick.convert.slot gives his standing guard moves) and his attacks in place of Marduk's (ttt2rick.convert.attacks),
+for his own motion row (rick_slot.cpp kRow, kRickMotions); and idle_preview.png / guard_preview.png /
+attack_<index>_preview.png (Havok's pose and the TTT2 skeleton's, side by side).
 """
 import json
 import os
@@ -34,6 +35,7 @@ from ..splatterhouse import extract, hkx
 from ..ttt2 import fk, xbox
 from ..ttt2.archive import Archives
 from ..ttt2.petexy import animation, bone, motion
+from . import attacks
 from . import rick as rickconv
 
 RICK_NIF_DIR = 'characters/rick_havok/xbox360'
@@ -81,14 +83,17 @@ def havok_worlds(sk, locals_):
     return out
 
 
-def sample(an, sk, fps):
-    """Per output frame, the Havok local transforms (n joints, 10) at fps: tracks interpolated (positions linearly,
-    rotations by normalized lerp in one hemisphere) between Havok's frames."""
+def sample(an, sk, fps, times=None):
+    """Per output frame, the Havok local transforms (n joints, 10) at fps, or at `times` (Havok frame numbers, one
+    per output frame: a retimed animation): tracks interpolated (positions linearly, rotations by normalized lerp in
+    one hemisphere) between Havok's frames."""
     tracks, src_fps = an['tracks'], an['fps']
-    count = max(1, int(round((an['frames'] - 1) * fps / src_fps)) + 1)
+    if times is None:
+        times = np.arange(max(1, int(round((an['frames'] - 1) * fps / src_fps)) + 1)) * src_fps / fps
+    count = len(times)
     out = np.tile(sk['reference'][None], (count, 1, 1)).astype(float)
     for k in range(count):
-        t = min(k * src_fps / fps, an['frames'] - 1)
+        t = min(max(times[k], 0.0), an['frames'] - 1)
         a = int(np.floor(t))
         b = min(a + 1, an['frames'] - 1)
         u = t - a
@@ -98,6 +103,21 @@ def sample(an, sk, fps):
             q = pa[3:7] * (1 - u) + qb * u
             out[k, j, 0:3] = pa[0:3] * (1 - u) + pb[0:3] * u
             out[k, j, 3:7] = q / np.linalg.norm(q)
+    return out
+
+
+def blend_in(local, start, n):
+    """local (frames, joints, 10) with its first n frames blended from the pose `start` (joints, 10), smoothly:
+    positions linearly, rotations by normalized lerp in one hemisphere."""
+    out = local.copy()
+    for f in range(min(n, len(local))):
+        u = f / n
+        u = u * u * (3 - 2 * u)
+        a, b = start, local[f]
+        q = np.where((np.einsum('ji,ji->j', a[:, 3:7], b[:, 3:7]) < 0)[:, None], -b[:, 3:7], b[:, 3:7])
+        out[f, :, 0:3] = a[:, 0:3] * (1 - u) + b[:, 0:3] * u
+        q = a[:, 3:7] * (1 - u) + q * u
+        out[f, :, 3:7] = q / np.linalg.norm(q, axis=1, keepdims=True)
     return out
 
 
@@ -141,13 +161,18 @@ class Retarget:
         self.nidx = {n: i for i, n in enumerate(names)}
         self.bon = xbox.read_bone(open(os.path.join(rick_out, 'files', rickconv.DONOR + '.bon'), 'rb').read())
         self.stand = marduk_stand(arc)
+        self.yaws = {}
 
-    def __call__(self, name, frames=None):
+    def __call__(self, name, frames=None, times=None, yaw=None, blend_from=None):
         """(raw animation, Havok joint positions per frame, TTT2 joint positions per frame) of Rick's Havok
-        animation `name`, its first `frames` frames at FPS (all by default)."""
+        animation `name`, its first `frames` frames at FPS (all by default), or sampled at `times` (Havok frames).
+        yaw: the root turn to take out (radians; default the animation's mean, kept in self.yaws[name]).
+        blend_from: (Havok local pose, n): the first n frames blend from that pose into the animation."""
         sk, hidx, Gref, D, nidx, bon = self.sk, self.hidx, self.Gref, self.D, self.nidx, self.bon
         an = hkx.animation(hkx.Packfile(open(os.path.join(self.folder, name), 'rb').read()))
-        local = sample(an, sk, FPS)[:frames]
+        local = sample(an, sk, FPS, times)[:frames]
+        if blend_from is not None:
+            local = blend_in(local, *blend_from)
         G = np.array([havok_worlds(sk, f) for f in local])
         bi = fk.bone_index(bon)
         Wbind = fk.world(bon, {}, bon['t'][0])
@@ -158,8 +183,11 @@ class Retarget:
         root_j = hidx[DRIVERS['HARA_ROT1']]
         # Havok's root faces its own way in the animation: its mean turn about the vertical (from the reference) is
         # taken out, so Rick faces his opponent as the TTT2 skeleton does
-        fwd = np.array([G[f, root_j, :3, :3] @ Gref[root_j, :3, :3].T @ [0, 0, 1] for f in range(len(local))]).mean(0)
-        yaw = np.arctan2(fwd[0], fwd[2])
+        fwd = np.array([G[f, root_j, :3, :3] @ Gref[root_j, :3, :3].T @ [0, 0, 1] for f in range(len(local))])
+        if yaw is None:
+            yaw = np.arctan2(fwd.mean(0)[0], fwd.mean(0)[2])
+        self.yaws[name] = yaw
+        self.first_yaw = np.arctan2(fwd[0][0], fwd[0][2])
         c, s_ = np.cos(-yaw), np.sin(-yaw)
         Y = np.array([[c, 0, s_], [0, 1, 0], [-s_, 0, c]])
         G = G.copy()
@@ -209,11 +237,17 @@ def main(game, splatter, rick_out, out):
     pack, index = with_appended(pack, guard)
     if index != GUARD_ANIM:
         raise ValueError('the guard went to body animation %d, not GUARD_ANIM %d' % (index, GUARD_ANIM))
+    marduk = arc.read(MARDUK_MOTIONS)
+    o0, offs = mota(marduk)
+    lengths = {i: animation.decode(marduk, '>', o0 + offs[i])['frames'] for i in attacks.ATTACKS}
+    pack, shown = attacks.with_attacks(pack, retarget, lengths, IDLE)
     os.makedirs(os.path.join(out, 'files'), exist_ok=True)
     open(os.path.join(out, 'files', 'key_%08x.bin' % RICK_MOTIONS), 'wb').write(pack)
     names, parents = retarget.sk['names'], retarget.sk['parents']
     preview(hp, names, parents, tp, retarget.bon['parent'], os.path.join(out, 'idle_preview.png'))
     preview(ghp, names, parents, gtp, retarget.bon['parent'], os.path.join(out, 'guard_preview.png'))
+    for index, (ahp, atp) in shown.items():
+        preview(ahp, names, parents, atp, retarget.bon['parent'], os.path.join(out, 'attack_%x_preview.png' % index))
     print('%s: stance %d frames, guard %d frames (body animation %d = %#x) at %.0f fps, motion pack %d bytes' % (
         out, len(hp), len(ghp), GUARD_ANIM, 0x4000 + GUARD_ANIM, FPS, len(pack)))
 
