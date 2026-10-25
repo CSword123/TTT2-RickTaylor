@@ -646,3 +646,59 @@ PPC_FUNC(sub_8262B2D0)
     __imp__sub_8262B2D0(ctx, base);
     if (at) GWrite32(base, at, theirs);
 }
+
+// The profile's per-fighter records (tk::profile::PartsCS::EachFighterInfoCS, Array<, 63>, 76 bytes each at
+// profile +9216): sub_82659F48 (profile r3) updates the team members' records after a match, by each member's id
+// byte (profile +640 + member * 4288). Rick's 64 indexed past the array (an ignored assert) and overwrote the
+// profile data after it, and the next Arcade load after a continue never finished. While it runs, Rick's byte is
+// Marduk's id: his results go to Marduk's record (as the other per-fighter save entry, sub_825550C8).
+extern "C" PPC_FUNC(__imp__sub_82659F48);
+PPC_FUNC(sub_82659F48)
+{
+    const uint32_t profile = ctx.r3.u32;
+    uint32_t lent[2] = {};
+    for (uint32_t k = 0; k < 2; ++k)
+        if (On() && g.ready && profile && base[profile + 640 + 4288 * k] == kId)
+        {
+            lent[k] = 1;
+            base[profile + 640 + 4288 * k] = uint8_t(kDonorId);
+        }
+    __imp__sub_82659F48(ctx, base);
+    for (uint32_t k = 0; k < 2; ++k)
+        if (lent[k]) base[profile + 640 + 4288 * k] = uint8_t(kId);
+    if (lent[0] || lent[1]) std::fprintf(stderr, "[rick] profile %08X: fighter record as Marduk's\n", profile);
+}
+
+// The other accessors of the same per-fighter tables (count at *(table + 68) + 12; an index past it is the title's
+// deliberate store to address 0) used when the save data is updated after a match, as sub_82584ED0: Rick's id is
+// Marduk's there. Their failed checks were the null writes after a lost Arcade match, after which the next match's
+// load (on continue) never finished.
+namespace {
+void RickTableIndex(uint8_t* base, uint32_t table, PPCRegister& index, uint32_t lr, const char* fn)
+{
+    if (!(On() && g.ready && index.u32 == kId && table)) return;
+    const uint32_t info = GRead32(base, table + 68);
+    if (info && index.u32 < GRead32(base, info + 12)) return;
+    static uint32_t logged = 0;
+    if (logged++ < 20) std::fprintf(stderr, "[rick] %s table %08X [64] -> Marduk's, lr %08X\n", fn, table, lr);
+    index.u64 = kDonorId;
+}
+}
+extern "C" PPC_FUNC(__imp__sub_82584E88);
+PPC_FUNC(sub_82584E88)                      // (table r3, index r4): the entry, asserted set
+{
+    RickTableIndex(base, ctx.r3.u32, ctx.r4, uint32_t(ctx.lr), "82584E88");
+    __imp__sub_82584E88(ctx, base);
+}
+extern "C" PPC_FUNC(__imp__sub_82585230);
+PPC_FUNC(sub_82585230)                      // (table r3, index r4, ...)
+{
+    RickTableIndex(base, ctx.r3.u32, ctx.r4, uint32_t(ctx.lr), "82585230");
+    __imp__sub_82585230(ctx, base);
+}
+extern "C" PPC_FUNC(__imp__sub_82585590);
+PPC_FUNC(sub_82585590)                      // (table r3, ..., index r7, ...)
+{
+    RickTableIndex(base, ctx.r3.u32, ctx.r7, uint32_t(ctx.lr), "82585590");
+    __imp__sub_82585590(ctx, base);
+}

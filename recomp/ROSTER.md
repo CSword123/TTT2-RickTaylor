@@ -147,5 +147,14 @@ picked member bytes are now kept one by one. With 64 then reaching the save data
 Checked: Rick + Hwoarang shows both on the VS screen. Rick + Marduk shows Rick only (one panel for P1: both members
 have Marduk's UI row; not yet looked into). `proton/route.py --rick --arcade --tag [--partner-left N]` drives it.
 
+Arcade continue (2026-10-25): after a lost match the save data's per-fighter tables and the profile's fighter
+records (EachFighterInfoCS, Array<, 63>) were indexed with Rick's 64; the failed checks (the title's store to
+address 0, which the runtime ignores) left the save update broken and the next load after a continue never ended.
+sub_82659F48 (profile records), sub_82584E88, sub_82585230, sub_82585590 (table accessors) now take Marduk's id for
+him, as sub_82584ED0 and sub_825550C8 already did: his results count as Marduk's until he has save entries of his
+own. Checked: Arcade loss, continue, back to the select screen.
+Customize mode: its grid is its own code (none of sub_8227A090..D3C8 run there) reading the title's original cell
+arrays, so Rick's cell cannot be reached there yet.
+
 Still open: only the standing and guard animations are his. Marduk's moves start and end in Marduk's guard (the game blends
 between them); other idles (crouch, the walk cycles, tag-in) are Marduk's.
