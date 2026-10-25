@@ -99,12 +99,14 @@ def main():
                     '(the VS screen shows both)')
     ap.add_argument('--partner-left', type=int, default=3, help='with --rick --tag: the partner is this many cells '
                     'left of the cell below Rick\'s (3: Marduk)')
+    ap.add_argument('--dummy-rick', action='store_true', help='Practice: the player is Marduk and the dummy Rick '
+                    '(TTT2_RICK=1)')
     ap.add_argument('--stage-right', type=int, default=4)       # Germany, Historic Town Square
     ap.add_argument('--out', default=os.path.join(PORT, 'fight.png'))
     a = ap.parse_args()
 
     env = dict(os.environ, TTT2_FBDUMP='1')
-    if a.rick:
+    if a.rick or a.dummy_rick:
         env['TTT2_RICK'] = '1'
     fb = os.path.join(PORT, 'fbdump.bmp')
     if os.path.exists(fb):
@@ -176,6 +178,10 @@ def main():
         drive('DOWN 100 200', frames=1)
         for _ in range(3):
             drive('LEFT 100 200', frames=1)
+    if a.dummy_rick:                         # ... from Marduk's to Rick's
+        for _ in range(3):
+            drive('RIGHT 100 200', frames=1)
+        drive('UP 100 200', frames=1)
     drive('A 150 500', frames=4)
     for _ in range(a.stage_right):           # one stage a press; the list animates, so wait a few frames each
         drive('RIGHT 100 300', frames=4)
