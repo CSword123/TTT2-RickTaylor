@@ -2,8 +2,8 @@
 
 python -m ttt2rick.convert.slot <game folder> <converted Rick (ttt2rick.convert.rick's out dir)> <out dir> [art dir]
 
-Writes <out>/files: ric.nud/.nut/.bon/.xml (the converted body files, renamed), key_52494331.bin (Marduk's moveset with
-Rick's id in its header and his guard: the standing guards, sGrd_* moves playing the common Bco_gurd_* animations,
+Writes <out>/files: ric.nud/.nut/.bon/.xml and ric_blood.nut (the converted body files, renamed; the bloody NUT for
+TTT2_RICK_BLOOD=1), key_52494331.bin (Marduk's moveset with Rick's id in its header and his guard: the standing guards, sGrd_* moves playing the common Bco_gurd_* animations,
 play his own, ttt2rick.convert.idle GUARD_ANIM) and ric/alo/... (copies of Marduk's effect files and their textures: the title loads a
 fighter's effects as <code>/alo/<name>.alo, with its own code); with an art dir (ttt2rick.convert.portrait's out),
 also its files/ (Rick's portraits).
@@ -74,6 +74,7 @@ def main(game, rick, out, art=None):
     files = {}
     for ext in ('nud', 'nut', 'bon', 'xml'):
         files['%s.%s' % (CODE, ext)] = open(os.path.join(rick, 'files', '%s.%s' % (DONOR, ext)), 'rb').read()
+    files['%s_blood.nut' % CODE] = open(os.path.join(rick, 'files', '%s_blood.nut' % DONOR), 'rb').read()
     files['key_%08x.bin' % MOVESET_KEY] = moveset(arc, image)
     fx, names = effects(arc)
     files.update(fx)

@@ -11,7 +11,9 @@ python -m ttt2rick.convert.rick <game folder> <rick export dir, e.g. work/rick/b
    costume part's cloth for the mask, clothes and shoes, the donor's face overlay for hair) with Rick's colour and
    normal maps and flat textures of the template's average for the other slots.
 5. Item database: the donor's, body only (Petexy's itemdb.body_only), so none of its costume parts are drawn.
-Writes files/<code>.nud/.nut/.bon/.xml (install that folder with ttt2rick.ttt2.overlay) and preview.png.
+6. Blood: the jeans and shoes are cleaned of Splatterhouse's painted-in blood (ttt2rick.convert.clean);
+   <code>_blood.nut is the same NUT with it (recomp/runtime/rick_slot.cpp loads it under TTT2_RICK_BLOOD=1).
+Writes files/<code>.nud/.nut/_blood.nut/.bon/.xml (install that folder with ttt2rick.ttt2.overlay) and preview.png.
 """
 import json
 import os
@@ -20,6 +22,7 @@ import sys
 import numpy as np
 from PIL import Image, ImageFilter
 
+from . import clean as blood
 from ..splatterhouse.preview import render
 from ..ttt2 import xbox
 from ..ttt2.archive import Archives
@@ -212,6 +215,7 @@ class TextureBank:
         self.images, self.fmts, self.keys = [], [], {}
         self.skin_target = skin_target        # RGB the skin of colour(..., skin=True) is graded to (its median)
         self.skin_scale = {}                  # path -> RGB factor on that texture's graded skin (seam_scale)
+        self.bloody = {}                      # image index -> the image with Splatterhouse's blood (convert.clean)
 
     def add(self, key, rgba, fmt):
         if key not in self.keys:
@@ -222,9 +226,16 @@ class TextureBank:
 
     def colour(self, path, alpha, skin=False):
         im = Image.open(path).convert('RGBA')
-        a = np.array(im.resize(pow2(*im.size), Image.LANCZOS))
+        size = pow2(*im.size)
+        ramp = blood.CLEAN.get(os.path.basename(path))
+        a = np.array(im.resize(size, Image.LANCZOS))
         if not alpha:
             a[..., 3] = 255
+        if ramp:                                       # the clothes' blood off (at the texture's own size), the
+            bloody = a.copy()                          # original kept for the bloody variant (textures(bloody=True))
+            a = np.array(Image.fromarray(blood.clean(np.asarray(im), ramp)).resize(size, Image.LANCZOS))
+            if not alpha:
+                a[..., 3] = 255
         if skin and self.skin_target is not None:      # a few passes: grading changes which pixels count as skin
             src = a[..., :3].astype(np.float32)
             w = skin_weight(a)[..., None]
@@ -236,7 +247,10 @@ class TextureBank:
                 r, b = src[..., 0], src[..., 2]       # as the mask's warm bone white counts as skin too (sat < 0.4)
                 ws = w * np.clip(((r - b) / np.maximum(r, 1.0) - 0.35) / 0.08, 0, 1)[..., None]
                 a[..., :3] = np.clip(a[..., :3] * (1 + ws * (self.skin_scale[path] - 1)), 0, 255).astype(np.uint8)
-        return self.add(('img', path, alpha, skin), a, 2 if alpha else 0)
+        gidx = self.add(('img', path, alpha, skin), a, 2 if alpha else 0)
+        if ramp:
+            self.bloody[gidx - GIDX_FIRST] = bloody
+        return gidx
 
     def normal(self, path):
         """RGB normal map (R = X, G = Y) -> TTT2's BC3 layout (A = X, G = Y flipped), as Petexy does."""
@@ -273,9 +287,10 @@ class TextureBank:
         img[:] = rgba
         return self.add(('const', tuple(int(x) for x in rgba), fmt), img, fmt)
 
-    def textures(self, budget=TEXTURE_BUDGET):
-        """NUT texture dicts, the largest halved (normal maps first) until they fit the budget."""
-        imgs = list(self.images)
+    def textures(self, budget=TEXTURE_BUDGET, bloody=False):
+        """NUT texture dicts, the largest halved (normal maps first) until they fit the budget. bloody: with the
+        clothes' original blood (the same sizes and order, so either NUT goes with the NUD)."""
+        imgs = [self.bloody.get(i, im) if bloody else im for i, im in enumerate(self.images)]
 
         def size(i):
             h, w = imgs[i].shape[:2]
@@ -468,6 +483,8 @@ def convert(game, rick_dir, tex_dir, out):
     os.makedirs(os.path.join(out, 'files'), exist_ok=True)
     files = {DONOR + '.nud': xbox.write_nud(model),
              DONOR + '.nut': xbox.write_nut({'version': 0x0100, 'textures': textures, 'trailer': b''}),
+             DONOR + '_blood.nut': xbox.write_nut({'version': 0x0100, 'textures': bank.textures(bloody=True),
+                                                   'trailer': b''}),
              DONOR + '.bon': xbox.write_bone(skel),
              DONOR + '.xml': itemdb.body_only(arc.read_name(DONOR + '.xml'))}
     for name, b in files.items():

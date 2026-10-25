@@ -75,6 +75,14 @@ bool On()
     return on;
 }
 
+// TTT2_RICK_BLOOD=1: Rick's textures with Splatterhouse's blood on his jeans and shoes (ttt2rick.convert.clean
+// takes it off by default).
+bool Bloody()
+{
+    static const bool on = [] { const char* e = std::getenv("TTT2_RICK_BLOOD"); return e && *e == '1'; }();
+    return on;
+}
+
 uint32_t Crc(const char* s)                              // the archives' keys: zlib.crc32(name, 0xFFFFFFFF)
 {
     uint32_t c = 0;
@@ -185,7 +193,7 @@ void Register(PPCContext& ctx, uint8_t* base, uint32_t master)
     {
         uint32_t k = r.key;
         if (r.op == Op::File && r.type == 0) k = Crc("ric.nud");
-        if (r.op == Op::File && r.type == 1) k = Crc("ric.nut");
+        if (r.op == Op::File && r.type == 1) k = Crc(Bloody() ? "ric_blood.nut" : "ric.nut");
         if (r.op == Op::File && r.type == 2) k = Crc("ric.bon");
         if (r.op == Op::File && r.type == 6) k = Crc("ric.xml");
         GWrite32(base, key, k);
