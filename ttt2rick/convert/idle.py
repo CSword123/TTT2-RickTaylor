@@ -10,8 +10,11 @@ python -m ttt2rick.convert.idle <game folder> <Splatterhouse data folder> <conve
        W_T(f) = R(G_J(f)) R(G_J(ref))^-1 R(D_J)^-1 R(W_T(bind)).
    Each animated TTT2 bone takes it from one joint (DRIVERS); its local rotation is its parent's animated world
    inverse times that, top-down (ttt2rick.ttt2.fk), as the Euler angles of a raw (0xC8) animation.
-3. The model root (channel 1) moves as Rick's root joint moves from its reference place, divided by the skeleton's
-   scale (the game multiplies channel 1 by it: checked on Marduk's stance, whose feet then stand on the floor).
+3. The model root (channel 1) is its bind place under G_J(f) G_J(ref)^-1 D_J^-1 of Rick's root joint, as the mesh
+   around it is (D_J with ttt2rick.convert.rick's lift, which stood the straightened legs on the floor: his own bent
+   legs need it taken off again, or his soles float ~10 cm), divided by the skeleton's scale (the game multiplies
+   channel 1 by it: checked on Marduk's stance, whose feet then stand on the floor). His feet then stand as in
+   Splatterhouse: soles on the floor, ankles 156 mm up.
    The ground displacement, turn and spine parameter (channels 0, 2, 6) are Marduk's stance's first frame.
 4. Frames: Havok's 30 a second, sampled at TTT2's 60.
 Out: files/key_<RICK_MOTIONS>.bin, Marduk's motion pack with the standing animation (body animation STAND_ANIM,
@@ -42,8 +45,10 @@ MARDUK_MOTIONS = 0xC903BD27      # motion row 17's motion pack (684 animations; 
 RICK_MOTIONS = 0x52494332        # "RIC2": rick_slot.cpp kRickMotions
 STAND_ANIM = 0x26                # Marduk's standing animation (body MOTA index; his moves name it 0x4026)
 FPS = 60.0
-# TTT2 bone (channel) -> the Rick joint whose rotation it takes
-DRIVERS = {'HARA_ROT1': 'root_jnt', 'KOSHI_jnt': 'root_jnt', 'MUNE1_jnt': 'C_midTorso_jnt',
+# TTT2 bone (channel) -> the Rick joint whose rotation it takes. The chest channel (MUNE1, which the game spreads
+# over MUNE1 and MUNE2) takes the upper torso's: his hunch bends there (20 degrees in combatidle), and with the mid
+# torso's the chest stayed upright under a hunched neck and head, the skin between them stretched into a sheet.
+DRIVERS = {'HARA_ROT1': 'root_jnt', 'KOSHI_jnt': 'root_jnt', 'MUNE1_jnt': 'C_upperTorso_jnt',
            'KUBI_jnt': 'C_neck_01_jnt', 'ATAMA_jnt': 'C_head_01_jnt'}
 for _s in 'RL':
     DRIVERS.update({'SAKOTSU_%s_jnt' % _s: '%s_clavicle_02_jnt' % _s, 'KATA_%s_jnt' % _s: '%s_shoulder_jnt' % _s,
@@ -131,8 +136,8 @@ class Retarget:
         donor = xbox.read_bone(arc.read_name(rickconv.DONOR + '.bon'))
         dW = bone.world_matrices(donor)
         dnames = [n[4:] if n.startswith('cha:') else n for n in donor['names']]
-        self.D = rickconv.repose(names, parents, data['skeleton_world'][:, :3, 3].astype(np.float64),
-                                 {n: dW[i][:3, 3] for i, n in enumerate(dnames)})
+        self.D = rickconv.reposed(names, parents, data['skeleton_world'][:, :3, 3].astype(np.float64),
+                                  {n: dW[i][:3, 3] for i, n in enumerate(dnames)}, info, data)
         self.nidx = {n: i for i, n in enumerate(names)}
         self.bon = xbox.read_bone(open(os.path.join(rick_out, 'files', rickconv.DONOR + '.bon'), 'rb').read())
         self.stand = marduk_stand(arc)
@@ -168,7 +173,10 @@ class Retarget:
                 j = DRIVERS[b]
                 R = G[f, hidx[j], :3, :3] @ Gref[hidx[j], :3, :3].T @ D[nidx[j], :3, :3].T @ Wbind[bi[b], :3, :3]
                 target[bi[b]] = R
-            root = bon['t'][0] + (G[f, root_j, :3, 3] - Gref[root_j, :3, 3])
+            # the root moves with the mesh around it: G(f) G(ref)^-1 D^-1 on its bind place, D with convert.rick's
+            # lift (which stood the straightened legs on the floor: Havok's bent legs need it taken off again)
+            M = G[f, root_j] @ np.linalg.inv(Gref[root_j]) @ np.linalg.inv(D[nidx[DRIVERS['HARA_ROT1']]])
+            root = M[:3, :3] @ bon['t'][0] + M[:3, 3]
             # top-down: each animated bone's local rotation under its parent's animated world
             n = len(bon['parent'])
             w = np.zeros((n, 4, 4))

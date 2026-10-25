@@ -51,6 +51,10 @@ SKIN_TEXTURE = 'rick_body_base.dds'     # meshes coloured by it get the skin mat
 RENDER_TRIM = np.array([1.20, 1.25, 1.30])
 # The neck shares the mask's texture, whose skin starts from another tone: every texture's skin is graded to the
 # same colour (the body's, graded; TextureBank skin_target), and the neck gets the skin material like the body.
+# Graded to the body's median alone, the neck came out 20-33% lighter and greyer than the body where they meet (the
+# body is darker and redder there than its median; the mask's skin is even): in game its upper half looked flat and
+# light over a darker wedge of the body. So the mask's skin is graded on to the body's colour at the seam
+# (seam_scale: the vertices the two meshes share).
 SKIN_MESHES = {'rick_neck'}
 SKIN_SHARING = {'rick_head_geo'}         # its texture is the neck's: graded the same, so the two share it
 MARDUK_SKIN = [0x10400B9D, 0x10400B97, 0x10400BA0]     # mar.nut: the arm, neck and leg skin colours
@@ -152,16 +156,27 @@ def repose(names, parents, P, donor_pos):
     return D
 
 
-def foot_heights(skel):
+def reposed(names, parents, P, donor_pos, info, data):
+    """repose's deltas, then lifted: straightened legs reach lower than the bent ones did, so the soles are stood on
+    the floor (y = 0) again. These take Rick's bind mesh to the TTT2 one (ttt2rick.convert.idle undoes them)."""
+    D = repose(names, parents, P, donor_pos)
+    floor = min(skin(D, data['mesh%d_positions' % k].astype(np.float64), data['mesh%d_normals' % k].astype(
+        np.float64), data['mesh%d_joints' % k], data['mesh%d_weights' % k].astype(np.float64))[0][:, 1].min()
+        for k in range(len(info['meshes'])))
+    lift = np.eye(4)
+    lift[1, 3] = -floor
+    return lift @ D
+
+
+def foot_heights(skel, names, P):
     """The skeleton's parameters 1-4: the ankles' and toes' heights over the soles (L, R, L, R), in units the game
     multiplies by the skeleton's scale. Every title skeleton has its ASHI / TSUMASAKI joints at about these times its
-    scale (some a few mm lower: shoe soles), so they are where the game puts the feet on the floor; the donor's would
-    sink Rick's taller feet. His soles stand at y = 0."""
-    W = bone.world_matrices(skel)
-    names = [n[4:] if n.startswith('cha:') else n for n in skel['names']]
+    scale (some a few mm lower: shoe soles), so they are where the game puts the feet on the floor. They are taken
+    with his feet flat, in his own bind pose (P, soles at y = 0), as his stance and guard keep them
+    (ttt2rick.convert.idle): the T-pose's feet are aimed down like the donor's, which lifts the ankles off the floor."""
     params = list(skel['params'])
-    for k, b in enumerate(('ASHI_L_jnt', 'ASHI_R_jnt', 'TSUMASAKI_L_jnt', 'TSUMASAKI_R_jnt')):
-        params[1 + k] = round(float(W[names.index(b)][1, 3] / skel['scale']), 1)
+    for k, j in enumerate(('L_ankle_jnt', 'R_ankle_jnt', 'L_ballFoot_jnt', 'R_ballFoot_jnt')):
+        params[1 + k] = round(float(P[names.index(j)][1] / skel['scale']), 1)
     skel['params'] = params
 
 
@@ -196,6 +211,7 @@ class TextureBank:
     def __init__(self, skin_target=None):
         self.images, self.fmts, self.keys = [], [], {}
         self.skin_target = skin_target        # RGB the skin of colour(..., skin=True) is graded to (its median)
+        self.skin_scale = {}                  # path -> RGB factor on that texture's graded skin (seam_scale)
 
     def add(self, key, rgba, fmt):
         if key not in self.keys:
@@ -216,6 +232,10 @@ class TextureBank:
             for _ in range(4):
                 a[..., :3] = np.clip(src * (1 + w * (gain - 1)), 0, 255).astype(np.uint8)
                 gain = gain * self.skin_target / skin_median(a)
+            if path in self.skin_scale:              # then on to the body's colour at a seam: saturated skin only,
+                r, b = src[..., 0], src[..., 2]       # as the mask's warm bone white counts as skin too (sat < 0.4)
+                ws = w * np.clip(((r - b) / np.maximum(r, 1.0) - 0.35) / 0.08, 0, 1)[..., None]
+                a[..., :3] = np.clip(a[..., :3] * (1 + ws * (self.skin_scale[path] - 1)), 0, 255).astype(np.uint8)
         return self.add(('img', path, alpha, skin), a, 2 if alpha else 0)
 
     def normal(self, path):
@@ -270,6 +290,41 @@ class TextureBank:
             imgs[i] = (imgs[i].reshape(h // 2, 2, w // 2, 2, 4).astype(np.float32).mean((1, 3)) + 0.5
                        ).astype(np.uint8)
         return [nut.make_texture(im, GIDX_FIRST + i, f, mips=MIPS) for i, (im, f) in enumerate(zip(imgs, self.fmts))]
+
+
+def seam_scale(bank, info, data, tex_dir):
+    """Each SKIN_MESHES texture's factor on its graded skin: the body's graded colour over its own at the vertices
+    it shares with the body (SKIN_TEXTURE) meshes, medians per channel, sampled through a small blur."""
+    scratch = TextureBank(skin_target=bank.skin_target)
+
+    def graded(name):
+        path = os.path.join(tex_dir, name.replace('.dds', '.png'))
+        img = Image.fromarray(scratch.images[scratch.colour(path, False, skin=True) - GIDX_FIRST])
+        return path, np.asarray(img.filter(ImageFilter.BoxBlur(2)), np.float64)[..., :3]
+
+    def sample(img, uv):
+        h, w = img.shape[:2]
+        return img[np.clip((uv[:, 1] % 1) * h, 0, h - 1).astype(int), np.clip((uv[:, 0] % 1) * w, 0, w - 1).astype(int)]
+    meshes = list(enumerate(info['meshes']))
+    body = [k for k, m in meshes if m['textures']['base'] == SKIN_TEXTURE]
+    _, body_img = graded(SKIN_TEXTURE)
+    for k, m in meshes:
+        if m['name'] not in SKIN_MESHES:
+            continue
+        pos, uv = data['mesh%d_positions' % k], data['mesh%d_uv' % k]
+        mine, theirs = [], []
+        for b in body:
+            near = np.linalg.norm(pos[:, None] - data['mesh%d_positions' % b][None], axis=2) < 0.5
+            i, j = np.nonzero(near)
+            mine.append(i)
+            theirs.append(sample(body_img, data['mesh%d_uv' % b][j]))
+        i = np.concatenate(mine)
+        if not len(i):
+            continue
+        path, img = graded(m['textures']['base'])
+        ratio = np.median(np.concatenate(theirs) / np.maximum(sample(img, uv[i]), 1.0), 0)
+        bank.skin_scale[path] = bank.skin_scale.get(path, 1.0) * ratio
+        print('%s: skin graded x %s to the body at %d seam vertices' % (m['name'], np.round(ratio, 3), len(i)))
 
 
 def templates(arc):
@@ -345,20 +400,13 @@ def convert(game, rick_dir, tex_dir, out):
     names, parents = info['skeleton']['names'], info['skeleton']['parents']
     P = data['skeleton_world'][:, :3, 3].astype(np.float64)
 
-    D = repose(names, parents, P, dpos)
-    # straightened legs reach lower than the bent ones did: stand the soles on the floor (y = 0) again
-    floor = min(skin(D, data['mesh%d_positions' % k].astype(np.float64), data['mesh%d_normals' % k].astype(
-        np.float64), data['mesh%d_joints' % k], data['mesh%d_weights' % k].astype(np.float64))[0][:, 1].min()
-        for k in range(len(info['meshes'])))
-    lift = np.eye(4)
-    lift[1, 3] = -floor
-    D = lift @ D
+    D = reposed(names, parents, P, dpos, info, data)
     P2 =np.array([_apply(D[j], P[j]) for j in range(len(names))])
     t7 = {'names': list(ANCHOR), 'parents': [-1] * len(ANCHOR),
           'world': np.array([np.vstack([np.hstack([np.eye(3), P2[names.index(r)][:, None]]), [0, 0, 0, 1]])
                              for r in ANCHOR.values()])}
     skel = skeleton.build(t7, donor)
-    foot_heights(skel)
+    foot_heights(skel, names, P)
     bidx = {n: i for i, n in enumerate(dnames)}
     jmap = np.array([bidx[WEIGHTS.get(n, 'KOSHI_jnt')] for n in names])
 
@@ -368,6 +416,7 @@ def convert(game, rick_dir, tex_dir, out):
     mine = skin_median(np.asarray(Image.open(os.path.join(tex_dir, SKIN_TEXTURE.replace('.dds', '.png'))).convert('RGBA')))
     bank = TextureBank(skin_target=mine * (theirs / mine * RENDER_TRIM))
     print('skin grade (Marduk / Rick x render trim, RGB):', np.round(theirs / mine * RENDER_TRIM, 3))
+    seam_scale(bank, info, data, tex_dir)
     meshes, preview, images = [], [], {}
     for k, m in enumerate(info['meshes']):
         pos, nrm = skin(D, data['mesh%d_positions' % k].astype(np.float64), data['mesh%d_normals' % k].astype(

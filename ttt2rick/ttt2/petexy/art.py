@@ -456,7 +456,47 @@ class Layout:
             return p
         lm.clone_depth(grid, place.depth, depth, char=sid, name='face_panel_' + self.code,
                        matrix_fn=to_cell, position_fn=to_cell_position)
+        if in_top:
+            x = lm.matrices[place.posid][4] + dx if place.posflags == lmb.POS_MATRIX else None
+            boxes = [lm.char(c.char).graphics[0].xy_box() for c in panel.frames[0].children
+                     if isinstance(c, lmb.Place) and isinstance(lm.char(c.char), lmb.Shape)]
+            if x is not None and boxes:
+                self.fit_spacer(x + min(b[0] for b in boxes), x + max(b[2] for b in boxes))
         self.changed = True
+
+    def fit_spacer(self, x0, x1):
+        """The grid's empty top-row corners are covered by a grille (sprites `spacer_left` / `spacer_right`, one shape
+        per grid width). The right one whose edge falls in the new cell (x0..x1, in the grid) still covers it:
+        it becomes the left one whose edge, mirrored, falls there too (the grid is symmetric), so the grille stops
+        at the new cell as the left one stops at the first top-row cell, and the background shows behind it."""
+        lm = self.lm
+        sides = [lm.find_named('spacer_' + s) for s in ('right', 'left')]
+        if not all(sides):
+            return
+        (_, _, right), (_, _, left) = sides[0][0], sides[1][0]
+
+        def origin(p):
+            if p.posflags == lmb.POS_MATRIX:
+                return lm.matrices[p.posid][4]
+            return lm.positions[p.posid][0] if p.posflags == lmb.POS_POSITION else 0.0
+
+        def shapes(p):
+            sprite = lm.char(p.char)
+            ids = {c.char for _, c in sprite.all_children() if isinstance(c, lmb.Place) and c.mode != lmb.MODE_MOVE}
+            return [lm.char(i) for i in sorted(ids) if isinstance(lm.char(i), lmb.Shape)]
+        rx = origin(right)
+        mine = [s for s in shapes(right) if x0 <= rx + s.graphics[0].xy_box()[0] <= x1]
+        theirs = [s for s in shapes(left) if x0 <= rx - s.graphics[0].xy_box()[2] <= x1]
+        if len(mine) != 1 or len(theirs) != 1 or len(theirs[0].graphics) != 1:
+            return
+        g, like = mine[0].graphics[0], theirs[0].graphics[0]
+        _, y0, _, y1 = g.xy_box()
+        _, ly0, _, ly1 = like.xy_box()
+        # mirrored in x (so the triangles turn the other way: their indices reversed), its height the right one's
+        verts = [[-x, y0 + (y - ly0) * (y1 - y0) / (ly1 - ly0), u, v] for x, y, u, v in like.verts]
+        indices = [i for t in range(0, len(like.indices), 3) for i in reversed(like.indices[t:t + 3])]
+        mine[0].graphics = [lmb.Graphic(like.atlas, verts, indices, like.fill)]
+        mine[0].bounds = lm.add_record(lmb.T_BOUNDS, mine[0].graphics[0].xy_box())
 
     def panel_pictures(self):
         """Every fighter's grid panel picture (the shape its panel shows and the next fighter's does not)."""

@@ -8,7 +8,8 @@ shows. Every layout with Marduk's labels gets Rick's beside them (`chara_face_ri
 made like the other fighters' at that place (ttt2rick.ttt2.petexy.art.Layout: frame and background from theirs, his
 picture placed so his face sits where theirs do), on a new texture page appended to the layout's container. The
 names (`chara_name_s_`, the frames' `p<n>_chara_waku_` labels end on the name) are RICK in the title's lettering.
-The select grids get Rick's panel (`face_panel_ric`, Eddy's cloned with his picture) in his cell, above Eddy's.
+The select grids get Rick's panel (`face_panel_ric`, Eddy's cloned with his picture) in his cell, above Eddy's, and
+the right grille (`spacer_right`) that covered his cell becomes the left one mirrored (Layout.fit_spacer).
 recomp/runtime/rick_slot.cpp turns Marduk's labels into these while the game shows Rick.
 Writes <out>/files/key_<layout>.bin and key_<container>.bin (for ttt2rick.ttt2.overlay).
 """

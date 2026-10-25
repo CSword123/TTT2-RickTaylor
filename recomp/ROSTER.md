@@ -120,9 +120,32 @@ player 2 presses START to take it): Marduk's blocked jabs put Rick in his block,
 guards (`cGrd_*`) are still the common ones.
 
 Feet: a skeleton's parameters 1-4 are the ankles' and toes' heights over the soles (times its scale): every title
-skeleton has its ASHI / TSUMASAKI joints there (a few mm lower in some: shoe soles). Rick's are his own (153.5, 65.5;
-`ttt2rick.convert.rick` foot_heights), not Marduk's 130 / 50, which would sink his taller feet ~3 cm wherever the game
-puts feet on the floor itself. Not yet seen on uneven ground.
+skeleton has its ASHI / TSUMASAKI joints there (a few mm lower in some: shoe soles). Rick's are his own, with his feet
+flat as in his bind pose and his stance (126.9, 59.8; `ttt2rick.convert.rick` foot_heights), not the T-pose's (153.5,
+65.5: its feet are aimed down like Marduk's, the ankles higher over the toes' tips). Not yet seen on uneven ground.
+
+Floating feet (fixed 2026-10-24): the stance's root had been moved by Havok's root offset from its reference, from the
+bind root; that bind root carries `convert.rick`'s 100.5 mm lift (straightened legs stood on the floor), so with his
+own bent legs his soles floated ~7-10 cm. The root now gets the mesh's own transform (`convert.idle`, step 3); both
+animations' ankles are at 156 mm (Splatterhouse's, soles on the floor), as Marduk's are at his 156.
+
+Neck (fixed 2026-10-24): the chest channel (MUNE1, spread by the game over MUNE1/MUNE2) took `C_midTorso`'s rotation,
+but his hunch bends at `C_upperTorso` (20 degrees in combatidle), so the chest stayed upright under a hunched neck and
+head and the skin from the back of the head to the shoulders stretched into a flat sheet. It now takes the upper
+torso's (`convert.idle` DRIVERS); checked in Practice from several angles.
+
+Neck colour (2026-10-25): the neck mesh (`rick_neck`) is painted from the mask's texture, whose skin was graded to the
+body's median like every skin texture; at the seam the body is darker and redder than its median, so the upper neck
+came out 20-33% lighter and greyer over a dark wedge of the body. `convert.rick` seam_scale now grades the mask's
+saturated skin on to the body's colour at the 29 seam vertices (x 0.79 / 0.69 / 0.65), leaving the mask's bone white.
+Checked at RenderScale=200 with `TTT2_FB_NATIVE=1` (C:/ttt2/port/fb_native.bmp at 2560x1440): much closer up.
+
+Tag teams (2026-10-25, Arcade): picking the partner used to end "Rick is picked" (`rick_slot.cpp`, the member byte
+fix), so the copies of his byte stayed capped at 62 and the VS and promotion screens showed row 0 (Paul) for him. Rick's
+picked member bytes are now kept one by one. With 64 then reaching the save data's per-fighter entry
+(`sub_825550C8`, Tag25SaveData, at the pick) the game wrote out of range and froze: that entry is Marduk's for him.
+Checked: Rick + Hwoarang shows both on the VS screen. Rick + Marduk shows Rick only (one panel for P1: both members
+have Marduk's UI row; not yet looked into). `proton/route.py --rick --arcade --tag [--partner-left N]` drives it.
 
 Still open: only the standing and guard animations are his. Marduk's moves start and end in Marduk's guard (the game blends
 between them); other idles (crouch, the walk cycles, tag-in) are Marduk's.
