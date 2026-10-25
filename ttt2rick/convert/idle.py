@@ -240,10 +240,7 @@ def main(game, splatter, rick_out, out):
     pack, index = with_appended(pack, guard)
     if index != GUARD_ANIM:
         raise ValueError('the guard went to body animation %d, not GUARD_ANIM %d' % (index, GUARD_ANIM))
-    marduk = arc.read(MARDUK_MOTIONS)
-    o0, offs = mota(marduk)
-    lengths = {i: animation.decode(marduk, '>', o0 + offs[i])['frames'] for i in attacks.ATTACKS}
-    pack, shown = attacks.with_attacks(pack, retarget, lengths, IDLE)
+    pack, shown = attacks.with_attacks(pack, retarget, IDLE)
     pack, more = attacks.with_new_attacks(pack, retarget, IDLE)
     shown.update(more)
     os.makedirs(os.path.join(out, 'files'), exist_ok=True)

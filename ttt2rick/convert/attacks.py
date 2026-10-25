@@ -15,10 +15,15 @@ from the end of the blend to just after the hit, eased.
 
 The X button's chain in Splatterhouse (statemachines/player_initialrick/playercomboattackstates.smf: Idle ->
 AttackPunchLeft -> AttackPunchRight -> ...) starts with a left then a right haymaker, which lunge far more than a jab:
-they are his b+1 and b+1,2 (Marduk's Va_lp00B, and Va_ttlprp, which its 2 cancels into), whose first active frames
-(21, 32) give the left one about Splatterhouse's own speed; the chain's 360Punch (atk_punch_360, left arm) is his
-b+1,1, a move of his own copied from Va_ttlprp. His 1 and 1,2 stay Marduk's. The second swings come out only once
-the first has swung through (FOLLOW_UP_FRAME; Marduk's 2 came out at frame 22, right after b+1's hit).
+they are his b+1 and b+1,2 (Marduk's Va_lp00B, and Va_ttlprp, which its 2 cancels into); the chain's 360Punch
+(atk_punch_360, left arm) is his b+1,1, a move of his own copied from Va_ttlprp. His 1 and 1,2 stay Marduk's.
+
+Timing (STARTUP; edit_moveset moves each move's active frames, end and frame-keyed extra properties by the same
+amount, so only the startup changes): b+1 is i16, the left haymaker's own speed in Splatterhouse (Marduk's: i21;
+Splatterhouse's hit volume is on from about i4, the fist out at 16). Its second swings come out at FOLLOW_UP_FRAME,
+once the left one has mostly swung back (Marduk's came out at 22, right after the hit), and are i20 (the right
+haymaker's own windup; the spin's sped up 1.4x): they hit 32 frames after b+1 does, inside Marduk's own string's 33
+(hit at 21, the 2 out at 22 and i32), which combos naturally on hit.
 """
 import os
 
@@ -28,16 +33,17 @@ from ..splatterhouse import hkx
 
 BLEND_IN = 6                     # frames at 60 fps from the stance's pose into an attack
 FORWARD = 400.0                  # ground displacement units (Marduk's dash: 1429; his own b+1: 1813)
-FOLLOW_UP_FRAME = 44             # b+1's frame from which its second swing comes out (its left swing back: Havok 22)
+FOLLOW_UP_FRAME = 28             # b+1's frame from which its second swings come out (Marduk's: 22)
+STARTUP = {'Va_lp00B': 16, 'Va_ttlprp': 20}             # first active frames (Marduk's: 21, 32)
 # Marduk's body animation -> (Splatterhouse animation, its frame of full extension at 30 fps, Marduk's move that
-# plays it, the move's first active frame at 60 fps)
+# plays it, its first active frame at 60 fps, frames: Marduk's less the startup taken off)
 ATTACKS = {
-    0xDD: ('atk_punchl_high.hkx', 10, 'Va_lp00B', 21),    # b+1: AttackPunchLeftHigh, L_weapon_jnt (80 frames)
-    0xDE: ('atk_punchr_high.hkx', 10, 'Va_ttlprp', 32),   # b+1,2: AttackPunchRightHigh, R_weapon_jnt (85 frames)
+    0xDD: ('atk_punchl_high.hkx', 10, 'Va_lp00B', 16, 75),     # b+1: AttackPunchLeftHigh, L_weapon_jnt (80)
+    0xDE: ('atk_punchr_high.hkx', 10, 'Va_ttlprp', 20, 73),    # b+1,2: AttackPunchRightHigh, R_weapon_jnt (85)
 }
 # appended body animations, in order from SPIN_ANIM: (Splatterhouse animation, peak, frames, first active frame)
 SPIN_ANIM = 685                  # after the guard (ttt2rick.convert.idle GUARD_ANIM 684)
-NEW_ATTACKS = [('atk_punch_360.hkx', 14, 85, 32)]       # b+1,1: 360Punch, L_weapon_jnt (Havok peak 14)
+NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20)]       # b+1,1: 360Punch, L_weapon_jnt (Havok peak 14)
 # Rick's own moves: (name, the move copied, its body animation, hitbox from, after move, button)
 LEFT_ARM = 'Va_lp00B'            # hitbox 0d0c: left hand and forearm (right: 0908)
 NEW_MOVES = [('Va_ttlplp_ric', 'Va_ttlprp', SPIN_ANIM, LEFT_ARM, 'Va_lp00B', 0x40000001)]
@@ -74,18 +80,18 @@ def _stance_pose(retarget, stance):
                   retarget.sk, FPS)[0]
 
 
-def with_attacks(pack, retarget, lengths, stance):
-    """The motion pack with every ATTACKS animation replaced (lengths: Marduk's frame count of each index; stance:
-    the stance's Havok animation, already retargeted), and a {index: (Havok joints, TTT2 joints) per frame}."""
+def with_attacks(pack, retarget, stance):
+    """The motion pack with every ATTACKS animation replaced (stance: the stance's Havok animation, already
+    retargeted), and a {index: (Havok joints, TTT2 joints) per frame}."""
     from .idle import with_animation
     start = _stance_pose(retarget, stance)
     shown = {}
-    for index, (name, peak, move, impact) in ATTACKS.items():
-        anim, hp, tp = _attack(retarget, start, name, peak, lengths[index], impact, stance)
+    for index, (name, peak, move, impact, frames) in ATTACKS.items():
+        anim, hp, tp = _attack(retarget, start, name, peak, frames, impact, stance)
         pack = with_animation(pack, index, anim)
         shown[index] = (hp, tp)
         print('%s -> body animation %#x (%s): %d frames, its frame %d at frame %d' % (
-            name, index, move, lengths[index], peak, impact))
+            name, index, move, frames, peak, impact))
     return pack, shown
 
 
@@ -118,6 +124,27 @@ def edit_moveset(m):
 
     def cancel_list(i):
         return [r for _, r in m.iter_list('cancels', moves[i]['cancel'], lambda r: r['direction'] == 0x8000)]
+
+    def own(i, field, table, end_test):
+        """Move i's list in `table` (its rows, edited in place): a copy at the table's end when other moves share it."""
+        if sum(1 for r in moves if r[field] == moves[i][field]) > 1:
+            rows = [dict(r) for _, r in m.iter_list(table, moves[i][field], end_test)]
+            moves[i][field] = len(m.tables[table])
+            m.tables[table].extend(rows)
+        return [r for _, r in m.iter_list(table, moves[i][field], end_test)]
+    for name, first in STARTUP.items():
+        i = names.index(name)
+        d = moves[i]['first_active'] - first
+        moves[i]['first_active'] -= d
+        moves[i]['last_active'] -= d
+        for r in own(i, 'cancel', 'cancels', lambda r: r['direction'] == 0x8000):
+            if r['direction'] == 0x8000:                      # the move's end
+                r['win_start'] -= d
+                r['start_frame'] -= d
+        for r in own(i, 'extraprops', 'extra_move_properties', lambda r: r['frame'] == 0 and r['id'] == 0):
+            if r['frame']:
+                r['frame'] = max(1, r['frame'] - d)
+        print('%s: i%d (%d frames earlier, its end too)' % (name, first, d))
     for src, dst in DELAYED:
         for r in cancel_list(names.index(src)):
             if r['move_id'] == names.index(dst):
