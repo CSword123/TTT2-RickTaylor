@@ -10,8 +10,9 @@ terms) and blends in from the stance's pose over BLEND_IN frames, as Splatterhou
 stance has the right side forward, and its left punches start wound the other way (hips +24..+55 degrees).
 
 The X button's chain in Splatterhouse (statemachines/player_initialrick/playercomboattackstates.smf: Idle ->
-AttackPunchLeft -> AttackPunchRight -> ...) starts with a left then a right punch: Tekken's 1 (left punch) and 2
-(right punch), both high like Marduk's.
+AttackPunchLeft -> AttackPunchRight -> ...) starts with a left then a right haymaker, which lunge far more than a jab:
+they are his b+1 and b+1,2 (Marduk's Va_lp00B, and Va_ttlprp, which its 2 cancels into within frames 1-22), whose
+first active frames (21, 32) give the left one about Splatterhouse's own speed. His 1 and 1,2 stay Marduk's.
 """
 import os
 
@@ -23,8 +24,8 @@ BLEND_IN = 6                     # frames at 60 fps from the stance's pose into 
 # Marduk's body animation -> (Splatterhouse animation, its frame of full extension at 30 fps, Marduk's move that
 # plays it, the move's first active frame at 60 fps)
 ATTACKS = {
-    0xC1: ('atk_punchl_high.hkx', 10, 'Va_lp00', 10),     # 1: AttackPunchLeftHigh, L_weapon_jnt
-    0xC8: ('atk_punchr_high.hkx', 10, 'Va_rp00', 10),     # 2: AttackPunchRightHigh, R_weapon_jnt
+    0xDD: ('atk_punchl_high.hkx', 10, 'Va_lp00B', 21),    # b+1: AttackPunchLeftHigh, L_weapon_jnt (80 frames)
+    0xDE: ('atk_punchr_high.hkx', 10, 'Va_ttlprp', 32),   # b+1,2: AttackPunchRightHigh, R_weapon_jnt (85 frames)
 }
 
 
