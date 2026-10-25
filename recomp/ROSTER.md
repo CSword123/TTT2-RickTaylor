@@ -156,5 +156,14 @@ own. Checked: Arcade loss, continue, back to the select screen.
 Customize mode: its grid is its own code (none of sub_8227A090..D3C8 run there) reading the title's original cell
 arrays, so Rick's cell cannot be reached there yet.
 
+Downed Rick could not be hit (fixed 2026-10-25): sub_822FB4F8 (player r3) takes a per-fighter body pointer by id
+from two 64-entry tables (0x82DD0A68; 0x82DD0B68 in down states 12-13) without a bound, so Rick's 64 read the second
+table's first entry. Found by bisecting, in game, wrappers that show Marduk's id for Rick in each of the 445
+functions of 0x822-0x826 that read player +84 (Rick's files as Marduk's id 17 were hittable; leaving +84 at 17 for
+Rick hides him as player 1). The hook shows Marduk's id while that one function runs. Practice "Action on the floor:
+OFF" keeps a dummy down for such tests.
+P2 portrait (fixed 2026-10-25): the Practice dummy's pick stores the capped 62 without sub_8227CFC0; sub_8227DC40
+now marks Rick picked on any pick, so the member bytes get 64 back.
+
 Still open: only the standing and guard animations are his. Marduk's moves start and end in Marduk's guard (the game blends
 between them); other idles (crouch, the walk cycles, tag-in) are Marduk's.

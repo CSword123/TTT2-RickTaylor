@@ -717,3 +717,19 @@ PPC_FUNC(sub_82585590)                      // (table r3, ..., index r7, ...)
     RickTableIndex(base, ctx.r3.u32, ctx.r7, uint32_t(ctx.lr), "82585590");
     __imp__sub_82585590(ctx, base);
 }
+
+
+
+// A player's body collision (sub_822FB4F8: player r3) takes a per-fighter pointer by id from two 64-entry tables
+// (0x82DD0A68, and 0x82DD0B68 in some down states), read without a bound: Rick's 64 got the second table's first
+// entry, and a downed Rick could not be hit (found 2026-10-25 by bisecting the functions that read player +84;
+// Rick's files under Marduk's id 17 were hit). While it runs, Rick's id is Marduk's.
+extern "C" PPC_FUNC(__imp__sub_822FB4F8);
+PPC_FUNC(sub_822FB4F8)
+{
+    const uint32_t player = ctx.r3.u32;
+    const bool lend = On() && g.ready && player && GRead32(base, player + 84) == kId;
+    if (lend) GWrite32(base, player + 84, kDonorId);
+    __imp__sub_822FB4F8(ctx, base);
+    if (lend) GWrite32(base, player + 84, kId);
+}
