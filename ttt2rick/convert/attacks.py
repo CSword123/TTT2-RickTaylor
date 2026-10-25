@@ -43,7 +43,9 @@ BLEND_IN = 6                     # frames at 60 fps from the stance's pose into 
 # forward travel (ground displacement units): Marduk's dash 1429, his own b+1 1813 and b+1,2 2080
 FIRST, FOLLOW_UP = 700.0, 900.0
 FOLLOW_UP_FRAME = 28             # b+1's frame from which its second swings come out (Marduk's: 22)
-STARTUP = {'Va_lp00B': 16, 'Va_ttlprp': 20}             # first active frames (Marduk's: 21, 32)
+# first and last active frames (Marduk's: 21-22, 32-32): the follow-ups' fists sweep through, out furthest only on
+# frame 20 (1534 units, 1166 on 19, 1432 on 21), so they stay out through 22 or a b+1 landed from further off whiffs
+STARTUP = {'Va_lp00B': (16, 17), 'Va_ttlprp': (20, 22)}
 # Marduk's body animation -> (Splatterhouse animation, its frame of full extension at 30 fps, Marduk's move that
 # plays it, its first active frame at 60 fps, frames: Marduk's less the startup taken off; the striking hand, the
 # forward travel)
@@ -167,11 +169,10 @@ def edit_moveset(m):
             moves[i][field] = len(m.tables[table])
             m.tables[table].extend(rows)
         return [r for _, r in m.iter_list(table, moves[i][field], end_test)]
-    for name, first in STARTUP.items():
+    for name, (first, last) in STARTUP.items():
         i = names.index(name)
         d = moves[i]['first_active'] - first
-        moves[i]['first_active'] -= d
-        moves[i]['last_active'] -= d
+        moves[i]['first_active'], moves[i]['last_active'] = first, last
         for r in own(i, 'cancel', 'cancels', lambda r: r['direction'] == 0x8000):
             if r['direction'] == 0x8000:                      # the move's end
                 r['win_start'] -= d
