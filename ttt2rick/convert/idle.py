@@ -163,11 +163,12 @@ class Retarget:
         self.stand = marduk_stand(arc)
         self.yaws = {}
 
-    def __call__(self, name, frames=None, times=None, yaw=None, blend_from=None):
+    def __call__(self, name, frames=None, times=None, yaw=None, blend_from=None, ground=None):
         """(raw animation, Havok joint positions per frame, TTT2 joint positions per frame) of Rick's Havok
         animation `name`, its first `frames` frames at FPS (all by default), or sampled at `times` (Havok frames).
         yaw: the root turn to take out (radians; default the animation's mean, kept in self.yaws[name]).
-        blend_from: (Havok local pose, n): the first n frames blend from that pose into the animation."""
+        blend_from: (Havok local pose, n): the first n frames blend from that pose into the animation.
+        ground: (frames, 3) added to channel 0, the ground displacement (z forward: a move's travel)."""
         sk, hidx, Gref, D, nidx, bon = self.sk, self.hidx, self.Gref, self.D, self.nidx, self.bon
         an = hkx.animation(hkx.Packfile(open(os.path.join(self.folder, name), 'rb').read()))
         local = sample(an, sk, FPS, times)[:frames]
@@ -224,6 +225,8 @@ class Retarget:
             for i, R in rots.items():
                 values[f, chan_of[i]] = bone.euler_xyz_from_matrix(R)
             values[f, 1] = root / scale * np.array([1, 1, -1])
+            if ground is not None:
+                values[f, 0] += ground[f]
         return raw_animation(desc, values), [g[:, :3, 3] for g in G], tposes
 
 
@@ -241,6 +244,8 @@ def main(game, splatter, rick_out, out):
     o0, offs = mota(marduk)
     lengths = {i: animation.decode(marduk, '>', o0 + offs[i])['frames'] for i in attacks.ATTACKS}
     pack, shown = attacks.with_attacks(pack, retarget, lengths, IDLE)
+    pack, more = attacks.with_new_attacks(pack, retarget, IDLE)
+    shown.update(more)
     os.makedirs(os.path.join(out, 'files'), exist_ok=True)
     open(os.path.join(out, 'files', 'key_%08x.bin' % RICK_MOTIONS), 'wb').write(pack)
     names, parents = retarget.sk['names'], retarget.sk['parents']

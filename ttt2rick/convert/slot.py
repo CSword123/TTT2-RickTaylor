@@ -3,10 +3,11 @@
 python -m ttt2rick.convert.slot <game folder> <converted Rick (ttt2rick.convert.rick's out dir)> <out dir> [art dir]
 
 Writes <out>/files: ric.nud/.nut/.bon/.xml and ric_blood.nut (the converted body files, renamed; the bloody NUT for
-TTT2_RICK_BLOOD=1), key_52494331.bin (Marduk's moveset with Rick's id in its header and his guard: the standing guards, sGrd_* moves playing the common Bco_gurd_* animations,
-play his own, ttt2rick.convert.idle GUARD_ANIM) and ric/alo/... (copies of Marduk's effect files and their textures: the title loads a
-fighter's effects as <code>/alo/<name>.alo, with its own code); with an art dir (ttt2rick.convert.portrait's out),
-also its files/ (Rick's portraits).
+TTT2_RICK_BLOOD=1), key_52494331.bin (Marduk's moveset with Rick's id in its header, his guard: the standing
+guards, sGrd_* moves playing the common Bco_gurd_* animations, play his own, ttt2rick.convert.idle GUARD_ANIM; and
+his attacks' moves, ttt2rick.convert.attacks edit_moveset) and ric/alo/... (copies of Marduk's effect files and
+their textures: the title loads a fighter's effects as <code>/alo/<name>.alo, with its own code); with an art dir
+(ttt2rick.convert.portrait's out), also its files/ (Rick's portraits).
 """
 import os
 import struct
@@ -14,6 +15,7 @@ import sys
 
 from ..ttt2.archive import Archives
 from ..ttt2.petexy import itemdb, motbin
+from . import attacks
 from .idle import GUARD_ANIM
 
 CODE, DONOR = 'ric', 'mar'
@@ -40,7 +42,7 @@ def moveset(arc, image):
     for i in guards:
         struct.pack_into('>I', ms, table + i * motbin.TTT2['moves'][0] + 8, BODY_ANIM + GUARD_ANIM)
     print('his guard (%#x) in %d standing guard moves' % (BODY_ANIM + GUARD_ANIM, len(guards)))
-    return bytes(ms)
+    return attacks.edit_moveset(motbin.read(bytes(ms)))
 
 
 def effects(arc):
