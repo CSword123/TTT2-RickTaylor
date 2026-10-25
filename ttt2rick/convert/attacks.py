@@ -41,6 +41,14 @@ The spin bounds in a juggle (BOUND): its hit conditions get TTT2's bound entry i
 [...], the requirement and reaction Marduk's own bound moves use (dwup_hei_xe_ex), and with it TTT2's Tag Assault:
 Petexy's tagsystem (third_party/petexy-ttt2: add_tag_assault, learnt from Marduk's 10 X -> XT -> XDA triples) gives
 it the tag cancel during its startup into a twin that bounces for the partner and brings the partner in.
+
+b+2 is Splatterhouse's Y (heavy) attack, which charges while Y is held (HeavyAttackIntro -> HeavyAttack (held)
+-> HeavyRelease, an overhand arc punch; held on -> HeavyCharge -> HeavyPunch, a bigger overhead smash). Tapped, it
+is Marduk's b+2 (Va_rp00B, i22) playing atk_arcpunch; with 2 still held at its frame HOLD_FRAME it cancels into a
+move of his own (Va_rpst_ric, a copy of Marduk's Va_rpst00: a mid knockdown that slams an airborne opponent down,
+30 damage, i24 from there: i36 from the press) playing atk_punchdown_r, which blends in from the arc punch's wound-up
+pose. A held button in a cancel is its bit << 9 (2: 0x400), a released one its bit << 18 (2: 0x80000), as in
+Jack-6's own charged b+2 (Jc_GUNrp00 -> Jc_GUN_4RPHLD on 0x400 at frame 15) and Lars's La_t_srpB02Hold.
 """
 import os
 
@@ -57,23 +65,34 @@ FOLLOW_UP_FRAME = 28             # b+1's frame from which its second swings come
 # b+1,2 is i17 (the 2 a little faster, as the user asked): it hits 29 frames after b+1, inside its 40-frame reaction.
 # The spin is copied from Va_ttlprp after this, so it gets its own i20 back (STARTUP_NEW).
 STARTUP = {'Va_lp00B': (16, 17), 'Va_ttlprp': (17, 19)}
-STARTUP_NEW = {'Va_ttlplp_ric': (20, 22)}
+STARTUP_NEW = {'Va_ttlplp_ric': (20, 22), 'Va_rpst_ric': (24, 25)}
 # damage of every hit-condition entry (Marduk's: b+1 17, b+1,2 10): the spin, the string's finisher, does more
-DAMAGE = {'Va_ttlplp_ric': 16}
+DAMAGE = {'Va_ttlplp_ric': 16, 'Va_rpst_ric': 30}
+# automatic cancels left out of a copied move: Marduk's own variants of it, with his animation (Va_rpst00 goes to
+# Va_rpst00_H on hit (requirement 46), an elbow, and to Va_rpst00Chg on a tag change)
+DROP = {'Va_rpst_ric': ['Va_rpst00_H', 'Va_rpst00Chg']}
 # Marduk's body animation -> (Splatterhouse animation, its frame of full extension at 30 fps, Marduk's move that
 # plays it, its first active frame at 60 fps, frames: Marduk's less the startup taken off; the striking hand, the
 # forward travel)
 ATTACKS = {
     0xDD: ('atk_punchl_high.hkx', 10, 'Va_lp00B', 16, 75, 'L', FIRST),       # b+1: AttackPunchLeftHigh (80)
     0xDE: ('atk_punchr_high.hkx', 10, 'Va_ttlprp', 17, 70, 'R', FOLLOW_UP),  # b+1,2: AttackPunchRightHigh (85)
+    # b+2: HeavyRelease, an overhead hammer: its fist is above his head until Havok frame 13 and comes down in front
+    # of him by 14, so the hit is on the downswing (13.7), with a lunge like Marduk's own b+2's
+    0x11E: ('atk_arcpunch.hkx', 13.7, 'Va_rp00B', 22, 80, 'R', 1100.0),
 }
+HOLD_FRAME = 12                  # b+2's frame at which 2 still held makes it the charged smash
 # appended body animations, in order from SPIN_ANIM: (Splatterhouse animation, peak, frames, first active frame,
 # the striking hand, the forward travel)
 SPIN_ANIM = 685                  # after the guard (ttt2rick.convert.idle GUARD_ANIM 684)
-NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20, 'L', FOLLOW_UP)]   # b+1,1: 360Punch (Havok peak 14)
+# ... and where its blend-in starts: None (the stance) or (an ATTACKS index, its frame)
+NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20, 'L', FOLLOW_UP, None),           # b+1,1: 360Punch (peak 14)
+               ('atk_punchdown_r.hkx', 15, 79, 24, 'R', FOLLOW_UP, (0x11E, 12))]  # b+2 held: HeavyPunch
 # Rick's own moves: (name, the move copied, its body animation, hitbox from, after move, button)
 LEFT_ARM = 'Va_lp00B'            # hitbox 0d0c: left hand and forearm (right: 0908)
-NEW_MOVES = [('Va_ttlplp_ric', 'Va_ttlprp', SPIN_ANIM, LEFT_ARM, 'Va_lp00B', 0x40000001)]
+# ... and its cancel's frame (None: where the copied move's own cancel from `after` is)
+NEW_MOVES = [('Va_ttlplp_ric', 'Va_ttlprp', SPIN_ANIM, LEFT_ARM, 'Va_lp00B', 0x40000001, None),
+             ('Va_rpst_ric', 'Va_rpst00', SPIN_ANIM + 1, 'Va_rp00B', 'Va_rp00B', 0x2 << 9, HOLD_FRAME)]
 DELAYED = [('Va_lp00B', 'Va_ttlprp')]                   # cancels that wait for FOLLOW_UP_FRAME
 # move -> extra properties added, (frame, id, value); frame 0x8001: from the move's start (as Marduk's b+2 has them)
 EXTRA = {'Va_ttlplp_ric': [(0x8001, 0x80f8, 2), (8, 0x81aa, 1), (24, 0x81aa, 0)]}
@@ -154,8 +173,15 @@ def with_new_attacks(pack, retarget, stance):
     from .idle import with_appended
     start = _stance_pose(retarget, stance)
     shown = {}
-    for k, (name, peak, frames, impact, hand, forward) in enumerate(NEW_ATTACKS):
-        anim, hp, tp = _attack(retarget, start, name, peak, frames, impact, hand, forward, stance)
+    for k, (name, peak, frames, impact, hand, forward, origin) in enumerate(NEW_ATTACKS):
+        pose = start
+        if origin is not None:                          # the pose of an ATTACKS animation at one of its frames
+            from .idle import sample
+            src, src_peak, _, src_impact, src_frames = ATTACKS[origin[0]][:5]
+            an = hkx.animation(hkx.Packfile(open(os.path.join(retarget.folder, src), 'rb').read()))
+            t = retime(an['frames'], src_peak, src_frames, src_impact)[origin[1]]
+            pose = sample(an, retarget.sk, 60.0, [t])[0]
+        anim, hp, tp = _attack(retarget, pose, name, peak, frames, impact, hand, forward, stance)
         pack, index = with_appended(pack, anim)
         if index != SPIN_ANIM + k:
             raise ValueError('%s went to body animation %d, not %d' % (name, index, SPIN_ANIM + k))
@@ -194,7 +220,7 @@ def edit_moveset(m):
                 r['win_start'] -= d
                 r['start_frame'] -= d
         for r in own(i, 'extraprops', 'extra_move_properties', lambda r: r['frame'] == 0 and r['id'] == 0):
-            if r['frame']:
+            if 0 < r['frame'] < 0x4000:              # from 0x4000 on not a frame (0x8001: from the start)
                 r['frame'] = max(1, r['frame'] - d)
         print('%s: i%d (%d frames earlier, its end too)' % (name, first, d))
     for name, (first, last) in STARTUP.items():
@@ -204,7 +230,7 @@ def edit_moveset(m):
             if r['move_id'] == names.index(dst):
                 r['win_end'] = r['start_frame'] = FOLLOW_UP_FRAME
     made = {}                                       # new move name -> its index
-    for name, copy, anim, hitbox_from, after, button in NEW_MOVES:
+    for name, copy, anim, hitbox_from, after, button, frame in NEW_MOVES:
         move = dict(moves[names.index(copy)])
         move['name'] = len(strings)
         strings += name.encode('latin1') + b'\0'
@@ -214,14 +240,26 @@ def edit_moveset(m):
         made[name] = len(moves) - 1
         i = names.index(after)
         rows = [dict(r) for r in cancel_list(i)]
-        like = next(r for r in rows if r['move_id'] == names.index(copy))
-        rows.insert(rows.index(like), dict(like, button=button, move_id=len(moves) - 1))
+        if frame is None:
+            like = next(r for r in rows if r['move_id'] == names.index(copy))
+            rows.insert(rows.index(like), dict(like, button=button, move_id=len(moves) - 1))
+        else:                                       # like the list's button rows (always, extradata 386), at frame
+            like = dict(next(r for r in rows if r['button'] & 0x40000000), win_start=frame, win_end=frame,
+                        start_frame=frame)
+            rows.insert(rows.index(next(r for r in rows if r['button'] & 0x40000000)),
+                        dict(like, direction=0, button=button, move_id=len(moves) - 1))
         moves[i]['cancel'] = len(cancels)
         cancels.extend(rows)
         print('%s (move %d, body animation %d) after %s on button %#x, from frame %d' % (
             name, len(moves) - 1, anim, after, button, like['start_frame']))
     for name, (first, last) in STARTUP_NEW.items():
         startup(made[name], name, first, last)
+    for name, drop in DROP.items():
+        i = made[name] if name in made else names.index(name)
+        rows = [dict(r) for r in cancel_list(i) if not (r['move_id'] < len(names) and names[r['move_id']] in drop)]
+        moves[i]['cancel'] = len(cancels)
+        cancels.extend(rows)
+        print('%s: no cancels into %s' % (name, ', '.join(drop)))
     # after NEW_MOVES: their copies keep the moves' old reactions
     reactions = m.tables['reactions']
     hit_end = lambda h: h['req'] is None or m.tables['requirements'][h['req']]['condition'] == 690   # no condition
