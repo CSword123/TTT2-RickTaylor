@@ -352,16 +352,8 @@ PPC_FUNC(sub_82331B50)                      // (players, slot, record, ...): rea
     std::fprintf(stderr, "[rick] loaded player %u from record %u (result %u)\n", ctx.r4.u32, 0u, ctx.r3.u32);
 }
 
-extern "C" PPC_FUNC(__imp__sub_82276760);
-PPC_FUNC(sub_82276760)                      // can id be picked (ids above 58: never)
-{
-    const uint32_t id = ctx.r3.u32, lr = uint32_t(ctx.lr);
-    if (On() && g.ready && id == kId) ctx.r3.u64 = 1;
-    else __imp__sub_82276760(ctx, base);
-    static uint32_t logged = 0;
-    if (On() && (id == kId || id == kDonorId) && logged++ < 40)
-        std::fprintf(stderr, "[rick] can pick %u -> %u (lr %08X)\n", id, ctx.r3.u32, lr);
-}
+// The pick gate (sub_82276760: can id r3 be picked) needs no override since TTT2-Recomp 0.2.5 hooks it itself
+// (classic_offline.cpp, wrapping the title's): the title's answers an id out of 0-62 as Paul's (always yes).
 
 extern "C" PPC_FUNC(__imp__sub_82276628);
 PPC_FUNC(sub_82276628)                      // sets a player (r3) up from its record (+88): with Marduk's, then Rick's id
@@ -491,6 +483,20 @@ PPC_FUNC(sub_82584ED0)                      // (table r3, index r4): its entry i
     __imp__sub_82584ED0(ctx, base);
 }
 
+extern "C" PPC_FUNC(__imp__sub_825550C8);
+PPC_FUNC(sub_825550C8)                      // (?, id r4, data r5): the save data's per-fighter entry (Tag25SaveData,
+{                                           // at a pick): tests it by id (sub_82584ED0), then writes it with the id
+    if (On() && g.ready && ctx.r4.u32 == kId)   // itself (sub_82584F08), out of its 63 for Rick: Marduk's entry
+    {
+        static uint32_t logged = 0;
+        if (logged++ < 20)
+            std::fprintf(stderr, "[rick] save entry (%08X, %u) -> Marduk's, lr %08X\n", ctx.r3.u32, ctx.r4.u32,
+                         uint32_t(ctx.lr));
+        ctx.r4.u64 = kDonorId;
+    }
+    __imp__sub_825550C8(ctx, base);
+}
+
 extern "C" PPC_FUNC(__imp__sub_8258CAE8);
 PPC_FUNC(sub_8258CAE8)                      // a per-fighter counter (u16[59] r3, row r4) += r5: none for Rick (it
 {                                           // would write past the array)
@@ -511,14 +517,16 @@ PPC_FUNC(sub_822763B0)                      // record whose +8 (UI row) is r3: l
 // and caps it at 62 (zkb, a Fight Lab mob): for Rick the byte gets 64 back, so the screens after the select (VS,
 // loading) find him and not row 0 (Paul).
 // Later copies of the members (about a dozen functions, as on Wii U) cap the byte again: while Rick is picked, a
-// member byte holding 62 is his. (62 is otherwise only Fight Lab's mob, and a pick of anyone else clears this.)
-namespace { uint32_t g_inPick = 0, g_pickByte = 0; bool g_rickPicked = false; }
+// member byte holding 62 is his. (62 is otherwise only Fight Lab's mob.) Rick stays picked until another fighter is
+// picked into his member byte: a tag partner's pick has a byte of its own and must not end it (it did, and the VS
+// and promotion screens showed row 0, Paul, for Rick).
+namespace { uint32_t g_inPick = 0, g_pickByte = 0; std::set<uint32_t> g_rickBytes; }
 extern "C" PPC_FUNC(__imp__sub_822815E0);
 PPC_FUNC(sub_822815E0)                      // a side's member (side r3, member r4) -> its byte (id at +0)
 {
     __imp__sub_822815E0(ctx, base);
     if (g_inPick) g_pickByte = ctx.r3.u32;
-    else if (g_rickPicked && ctx.r3.u32 && base[ctx.r3.u32] == 62) base[ctx.r3.u32] = uint8_t(kId);
+    else if (!g_rickBytes.empty() && ctx.r3.u32 && base[ctx.r3.u32] == 62) base[ctx.r3.u32] = uint8_t(kId);
 }
 extern "C" PPC_FUNC(__imp__sub_8227CFC0);
 PPC_FUNC(sub_8227CFC0)
@@ -528,10 +536,10 @@ PPC_FUNC(sub_8227CFC0)
     g_pickByte = 0;
     __imp__sub_8227CFC0(ctx, base);
     --g_inPick;
-    if (On() && g.ready && record < kTitleRecords) g_rickPicked = false;
+    if (On() && g.ready && record < kTitleRecords && g_pickByte) g_rickBytes.erase(g_pickByte);
     if (Ours(record) && g_pickByte)
     {
-        g_rickPicked = true;
+        g_rickBytes.insert(g_pickByte);
         base[g_pickByte] = uint8_t(kId);
         std::fprintf(stderr, "[rick] member byte %08X = %u\n", g_pickByte, kId);
     }

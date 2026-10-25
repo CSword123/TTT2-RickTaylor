@@ -40,6 +40,12 @@ def like(shot, ref, box, tolerance=12):
     return grey_diff(shot, Image.open(os.path.join(REF, ref)).convert('RGB'), box) <= tolerance
 
 
+def tag_lit(shot):
+    """The Tag/Solo prompt's Tag box has its green frame (left edge)."""
+    r, g, b = shot.getpixel((230, 185))
+    return g - r > 40 and g - b > 60
+
+
 def red(shot, x, y):
     r, g, b = shot.getpixel((x, y))
     return r > 140 and r - g > 70 and r - b > 70
@@ -89,6 +95,10 @@ def main():
     ap.add_argument('--stop', choices=['menu', 'select'])
     ap.add_argument('--arcade', action='store_true', help='Arcade Battle instead of Practice (no dummy; frames '
                     'from the pick on are saved as <out>_NN.png)')
+    ap.add_argument('--tag', action='store_true', help='with --arcade: a tag team, the player\'s fighter and Marduk '
+                    '(the VS screen shows both)')
+    ap.add_argument('--partner-left', type=int, default=3, help='with --rick --tag: the partner is this many cells '
+                    'left of the cell below Rick\'s (3: Marduk)')
     ap.add_argument('--stage-right', type=int, default=4)       # Germany, Historic Town Square
     ap.add_argument('--out', default=os.path.join(PORT, 'fight.png'))
     a = ap.parse_args()
@@ -121,14 +131,17 @@ def main():
     until(lambda s: like(s, 'offline.png', (160, 100, 760, 470)), 'A 150 300', what='the Offline menu')
     choose_row(0 if a.arcade else 6, 'Arcade Battle' if a.arcade else 'Practice')
     until(lambda s: not like(s, 'offline_practice.png', (160, 100, 760, 470)), 'A 150 300', what='the mode')
-    until(lambda s: green(s, 380, 252), 'RIGHT 120 200', what='Solo highlighted')
-    drive('A 150 300', frames=1)            # Solo; then wait (a second A would pick a fighter)
+    if a.tag:
+        until(tag_lit, 'LEFT 120 200', what='Tag highlighted')
+    else:
+        until(lambda s: green(s, 380, 252), 'RIGHT 120 200', what='Solo highlighted')
+    drive('A 150 300', frames=1)            # Tag or Solo; then wait (a second A would pick a fighter)
     for _ in range(20):
         shot = drive(frames=1)
         if like(shot, 'select_practice.png', GRID_BOX, 25) and not green(shot, 380, 252) and \
                 (a.arcade or like(shot, 'select_practice.png', LABEL_BOX)):
             break
-        if green(shot, 380, 252):
+        if tag_lit(shot) if a.tag else green(shot, 380, 252):
             drive('A 150 300', frames=1)
     else:
         raise SystemExit('route: no character select')
@@ -144,6 +157,13 @@ def main():
         return
     if a.arcade:
         drive('A 150 300', frames=1)
+        if a.tag:                            # the partner: Marduk (the cursor stays on the first pick)
+            drive(frames=8)
+            if a.rick:
+                drive('DOWN 100 200', frames=1)
+                for _ in range(a.partner_left):
+                    drive('LEFT 100 200', frames=1)
+            drive('A 150 300', frames=1)
         stem = os.path.splitext(a.out)[0]
         for i in range(40):
             drive('A 150 300' if i in (3, 6) else 'RIGHT 10 10', frames=1, out='%s_%02d.png' % (stem, i))
