@@ -10,8 +10,12 @@ it spread evenly over the frames before that, the rest over the remaining length
 Every attack takes out the stance's root turn (they all end in his stance: root -40, chest -13 degrees in Havok's
 terms) and blends in from the stance's pose over BLEND_IN frames, as Splatterhouse blends out of its idle: his
 stance has the right side forward, and its left punches start wound the other way (hips +24..+55 degrees).
-Splatterhouse's root motion is turned in place, so each attack carries him FORWARD (ground displacement, channel 0)
-from the end of the blend to just after the hit, eased.
+Splatterhouse's root motion is turned in place, so each attack carries him forward (its `forward`: ground
+displacement, channel 0) from the end of the blend to just after the hit, eased. Splatterhouse turns him toward his
+target as he punches, and its right punch and spin are thrown off his facing (48 and 29 degrees): in TTT2, where
+hitboxes are on the bones, they missed anything not pinned to a wall. So each attack is also turned (aim) until the
+striking hand points straight ahead on its first active frame, the turn eased in over the windup and out again over
+the recovery, so it still starts and ends in his stance.
 
 The X button's chain in Splatterhouse (statemachines/player_initialrick/playercomboattackstates.smf: Idle ->
 AttackPunchLeft -> AttackPunchRight -> ...) starts with a left then a right haymaker, which lunge far more than a jab:
@@ -36,18 +40,21 @@ import numpy as np
 from ..splatterhouse import hkx
 
 BLEND_IN = 6                     # frames at 60 fps from the stance's pose into an attack
-FORWARD = 400.0                  # ground displacement units (Marduk's dash: 1429; his own b+1: 1813)
+# forward travel (ground displacement units): Marduk's dash 1429, his own b+1 1813 and b+1,2 2080
+FIRST, FOLLOW_UP = 700.0, 900.0
 FOLLOW_UP_FRAME = 28             # b+1's frame from which its second swings come out (Marduk's: 22)
 STARTUP = {'Va_lp00B': 16, 'Va_ttlprp': 20}             # first active frames (Marduk's: 21, 32)
 # Marduk's body animation -> (Splatterhouse animation, its frame of full extension at 30 fps, Marduk's move that
-# plays it, its first active frame at 60 fps, frames: Marduk's less the startup taken off)
+# plays it, its first active frame at 60 fps, frames: Marduk's less the startup taken off; the striking hand, the
+# forward travel)
 ATTACKS = {
-    0xDD: ('atk_punchl_high.hkx', 10, 'Va_lp00B', 16, 75),     # b+1: AttackPunchLeftHigh, L_weapon_jnt (80)
-    0xDE: ('atk_punchr_high.hkx', 10, 'Va_ttlprp', 20, 73),    # b+1,2: AttackPunchRightHigh, R_weapon_jnt (85)
+    0xDD: ('atk_punchl_high.hkx', 10, 'Va_lp00B', 16, 75, 'L', FIRST),       # b+1: AttackPunchLeftHigh (80)
+    0xDE: ('atk_punchr_high.hkx', 10, 'Va_ttlprp', 20, 73, 'R', FOLLOW_UP),  # b+1,2: AttackPunchRightHigh (85)
 }
-# appended body animations, in order from SPIN_ANIM: (Splatterhouse animation, peak, frames, first active frame)
+# appended body animations, in order from SPIN_ANIM: (Splatterhouse animation, peak, frames, first active frame,
+# the striking hand, the forward travel)
 SPIN_ANIM = 685                  # after the guard (ttt2rick.convert.idle GUARD_ANIM 684)
-NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20)]       # b+1,1: 360Punch, L_weapon_jnt (Havok peak 14)
+NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20, 'L', FOLLOW_UP)]   # b+1,1: 360Punch (Havok peak 14)
 # Rick's own moves: (name, the move copied, its body animation, hitbox from, after move, button)
 LEFT_ARM = 'Va_lp00B'            # hitbox 0d0c: left hand and forearm (right: 0908)
 NEW_MOVES = [('Va_ttlplp_ric', 'Va_ttlprp', SPIN_ANIM, LEFT_ARM, 'Va_lp00B', 0x40000001)]
@@ -64,20 +71,42 @@ def retime(frames_src, peak, frames_dst, impact):
     return np.where(k <= impact, before, after)
 
 
-def travel(frames, impact):
-    """(frames, 3) ground displacement: FORWARD along z, eased from BLEND_IN to a few frames after the hit."""
+def ease(x):
+    x = np.clip(x, 0, 1)
+    return x * x * (3 - 2 * x)
+
+
+def travel(frames, impact, forward):
+    """(frames, 3) ground displacement: `forward` along z, eased from BLEND_IN to a few frames after the hit."""
     k = np.arange(frames, dtype=float)
-    u = np.clip((k - BLEND_IN) / max(1, impact + 4 - BLEND_IN), 0, 1)
     out = np.zeros((frames, 3))
-    out[:, 2] = FORWARD * u * u * (3 - 2 * u)
+    out[:, 2] = forward * ease((k - BLEND_IN) / max(1, impact + 4 - BLEND_IN))
     return out
 
 
-def _attack(retarget, start, name, peak, frames, impact, stance):
+def aim(frames, impact):
+    """0..1 per frame: how much of the aiming turn is on (in over the windup, held a few frames, out by the end)."""
+    k = np.arange(frames, dtype=float)
+    return np.where(k <= impact + 4, ease(k / (impact + 4)),
+                    1 - ease((k - impact - 4) / max(1, frames - 1 - impact - 4)))
+
+
+def _attack(retarget, start, name, peak, frames, impact, hand, forward, stance):
+    """(raw animation, Havok joints, TTT2 joints) of an attack: retimed, turned to aim, carried forward."""
     an = hkx.animation(hkx.Packfile(open(os.path.join(retarget.folder, name), 'rb').read()))
     times = retime(an['frames'], peak, frames, impact)
-    return retarget(name, times=times, yaw=retarget.yaws[stance], blend_from=(start, BLEND_IN),
-                    ground=travel(frames, impact))
+    base = retarget.yaws[stance]
+    kw = dict(times=times, blend_from=(start, BLEND_IN), ground=travel(frames, impact, forward))
+    names = [n[4:] if n.startswith('cha:') else n for n in retarget.bon['names']]
+    h = names.index('TE_%s_jnt' % hand)
+    _, _, tp = retarget(name, yaw=base, **kw)
+    x, _, z = tp[impact][h]
+    off = np.arctan2(x, z)                          # the hand's direction from straight ahead (+z)
+    out = retarget(name, yaw=base + off * aim(frames, impact), **kw)
+    x, _, z = out[2][impact][h]
+    print('%s: aimed %.0f degrees (the %s hand now %.0f off)' % (name, np.degrees(off), hand,
+                                                                 np.degrees(np.arctan2(x, z))))
+    return out
 
 
 def _stance_pose(retarget, stance):
@@ -92,8 +121,8 @@ def with_attacks(pack, retarget, stance):
     from .idle import with_animation
     start = _stance_pose(retarget, stance)
     shown = {}
-    for index, (name, peak, move, impact, frames) in ATTACKS.items():
-        anim, hp, tp = _attack(retarget, start, name, peak, frames, impact, stance)
+    for index, (name, peak, move, impact, frames, hand, forward) in ATTACKS.items():
+        anim, hp, tp = _attack(retarget, start, name, peak, frames, impact, hand, forward, stance)
         pack = with_animation(pack, index, anim)
         shown[index] = (hp, tp)
         print('%s -> body animation %#x (%s): %d frames, its frame %d at frame %d' % (
@@ -106,8 +135,8 @@ def with_new_attacks(pack, retarget, stance):
     from .idle import with_appended
     start = _stance_pose(retarget, stance)
     shown = {}
-    for k, (name, peak, frames, impact) in enumerate(NEW_ATTACKS):
-        anim, hp, tp = _attack(retarget, start, name, peak, frames, impact, stance)
+    for k, (name, peak, frames, impact, hand, forward) in enumerate(NEW_ATTACKS):
+        anim, hp, tp = _attack(retarget, start, name, peak, frames, impact, hand, forward, stance)
         pack, index = with_appended(pack, anim)
         if index != SPIN_ANIM + k:
             raise ValueError('%s went to body animation %d, not %d' % (name, index, SPIN_ANIM + k))

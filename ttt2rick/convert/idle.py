@@ -166,7 +166,8 @@ class Retarget:
     def __call__(self, name, frames=None, times=None, yaw=None, blend_from=None, ground=None):
         """(raw animation, Havok joint positions per frame, TTT2 joint positions per frame) of Rick's Havok
         animation `name`, its first `frames` frames at FPS (all by default), or sampled at `times` (Havok frames).
-        yaw: the root turn to take out (radians; default the animation's mean, kept in self.yaws[name]).
+        yaw: the root turn to take out (radians; default the animation's mean, kept in self.yaws[name]), or one per
+        frame (an attack turned toward its target).
         blend_from: (Havok local pose, n): the first n frames blend from that pose into the animation.
         ground: (frames, 3) added to channel 0, the ground displacement (z forward: a move's travel)."""
         sk, hidx, Gref, D, nidx, bon = self.sk, self.hidx, self.Gref, self.D, self.nidx, self.bon
@@ -187,14 +188,16 @@ class Retarget:
         fwd = np.array([G[f, root_j, :3, :3] @ Gref[root_j, :3, :3].T @ [0, 0, 1] for f in range(len(local))])
         if yaw is None:
             yaw = np.arctan2(fwd.mean(0)[0], fwd.mean(0)[2])
-        self.yaws[name] = yaw
+        yaws = np.broadcast_to(np.asarray(yaw, float), (len(local),))
+        self.yaws[name] = float(np.mean(yaws))
         self.first_yaw = np.arctan2(fwd[0][0], fwd[0][2])
-        c, s_ = np.cos(-yaw), np.sin(-yaw)
-        Y = np.array([[c, 0, s_], [0, 1, 0], [-s_, 0, c]])
+        c, s_ = np.cos(-yaws), np.sin(-yaws)
+        Y = np.zeros((len(local), 3, 3))
+        Y[:, 0, 0], Y[:, 0, 2], Y[:, 1, 1], Y[:, 2, 0], Y[:, 2, 2] = c, s_, 1, -s_, c
         G = G.copy()
-        G[:, :, :3, :3] = np.einsum('ij,fnjk->fnik', Y, G[:, :, :3, :3])
-        G[:, :, :3, 3] = np.einsum('ij,fnj->fni', Y, G[:, :, :3, 3] - Gref[root_j, :3, 3]) + Gref[root_j, :3, 3]
-        print('%s: root turn taken out: %.1f degrees' % (name, np.degrees(yaw)))
+        G[:, :, :3, :3] = np.einsum('fij,fnjk->fnik', Y, G[:, :, :3, :3])
+        G[:, :, :3, 3] = np.einsum('fij,fnj->fni', Y, G[:, :, :3, 3] - Gref[root_j, :3, 3]) + Gref[root_j, :3, 3]
+        print('%s: root turn taken out: %.1f degrees' % (name, np.degrees(np.mean(yaws))))
         tposes = []
         for f in range(len(local)):
             target = {}
