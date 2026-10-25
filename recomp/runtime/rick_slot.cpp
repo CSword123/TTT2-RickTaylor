@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <set>
+#include <tuple>
 #include <utility>
 
 extern "C" PPC_FUNC(__imp__sub_82468AD0);   // builds the chara master (r3) and the key registry
@@ -336,6 +337,7 @@ PPC_FUNC(sub_82276200)
 }
 
 int g_pickProxy = 0;                        // sub_8227DC40 runs for Rick with Marduk's id: his records answer it
+bool g_rickPickedElsewhere = false;         // Rick picked through sub_8227DC40 (any pick, the dummy's too)
 PPC_FUNC(sub_82276218)
 {
     if (On() && g.ready && (ctx.r3.u32 == kId || (g_pickProxy && ctx.r3.u32 == kDonorId))) { ctx.r3.u64 = kRecord0 + (ctx.r4.u32 < 2 ? ctx.r4.u32 : 0); return; }
@@ -418,6 +420,7 @@ PPC_FUNC(sub_8227DC40)                      // a pick (?, player r4, ..., id r7)
     ++g_pickProxy;
     __imp__sub_8227DC40(ctx, base);
     --g_pickProxy;
+    if (ctx.r3.u32) g_rickPickedElsewhere = true;
     const uint64_t now = (uint64_t(GRead32(base, player + 328)) << 32) | GRead32(base, player + 332);
     const uint64_t back = (now & ~bit) | (mask & bit);      // Marduk's own bit as it was
     GWrite32(base, player + 328, uint32_t(back >> 32));
@@ -539,12 +542,24 @@ PPC_FUNC(sub_822763B0)                      // record whose +8 (UI row) is r3: l
 // picked into his member byte: a tag partner's pick has a byte of its own and must not end it (it did, and the VS
 // and promotion screens showed row 0, Paul, for Rick).
 namespace { uint32_t g_inPick = 0, g_pickByte = 0; std::set<uint32_t> g_rickBytes; }
+extern bool g_rickPickedElsewhere;
 extern "C" PPC_FUNC(__imp__sub_822815E0);
 PPC_FUNC(sub_822815E0)                      // a side's member (side r3, member r4) -> its byte (id at +0)
 {
+    const uint32_t side = ctx.r3.u32, member = ctx.r4.u32, lr = uint32_t(ctx.lr);
     __imp__sub_822815E0(ctx, base);
+    if (std::getenv("TTT2_RICK_TRACE") && ctx.r3.u32)
+    {
+        static std::set<std::tuple<uint32_t, uint32_t, uint32_t>> seen;
+        if (seen.size() < 200 && seen.emplace(side, member, lr).second)
+            std::fprintf(stderr, "[rick] member byte (side %08X, member %u) = %u at %08X, lr %08X%s\n", side, member,
+                         base[ctx.r3.u32], ctx.r3.u32, lr, g_inPick ? " (pick)" : "");
+    }
     if (g_inPick) g_pickByte = ctx.r3.u32;
-    else if (!g_rickBytes.empty() && ctx.r3.u32 && base[ctx.r3.u32] == 62) base[ctx.r3.u32] = uint8_t(kId);
+    // a pick that is not the player's own (the Practice dummy's, a CPU's) stores the capped 62 without
+    // sub_8227CFC0: sub_8227DC40 marks Rick picked there (62 is otherwise only Fight Lab's mob)
+    else if ((!g_rickBytes.empty() || g_rickPickedElsewhere) && ctx.r3.u32 && base[ctx.r3.u32] == 62)
+        base[ctx.r3.u32] = uint8_t(kId);
 }
 extern "C" PPC_FUNC(__imp__sub_8227CFC0);
 PPC_FUNC(sub_8227CFC0)
