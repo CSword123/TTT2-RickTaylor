@@ -399,6 +399,16 @@ PPC_FUNC(sub_8227DC40)                      // a pick (?, player r4, ..., id r7)
 {                                           // player's mask at +328, which no id above 63 has (sld by 64 is 0)
     if (!(On() && g.ready && ctx.r7.u32 == kId)) { __imp__sub_8227DC40(ctx, base); return; }
     const uint32_t player = ctx.r4.u32;
+    // One Rick per team: the title keeps a fighter out of the second member by its cleared bit in this mask; Rick
+    // has no bit and Marduk's lent one is put back after his pick, so while a member's record (+348 / +352) is
+    // already Rick's the pick goes through with his own id 64, whose bit test fails as for any unavailable fighter.
+    if (Ours(GRead32(base, player + 348)) || Ours(GRead32(base, player + 352)))
+    {
+        static uint32_t logged = 0;
+        if (logged++ < 5) std::fprintf(stderr, "[rick] second Rick in the team refused (player %08X)\n", player);
+        __imp__sub_8227DC40(ctx, base);
+        return;
+    }
     const uint64_t bit = 1ull << kDonorId;
     const uint64_t mask = (uint64_t(GRead32(base, player + 328)) << 32) | GRead32(base, player + 332);
     const uint64_t lent = mask | bit;
@@ -598,7 +608,11 @@ bool SlotIsRick(PPCContext& ctx, uint8_t* base, uint32_t slot)
     const uint32_t record = GRead32(base, player + 348 + 4 * (slot & 1));
     bool rick = Ours(record);
     uint32_t id = ~0u;
-    if (!rick && (slot & 1) == 0)
+    // before its pick a member shows the cursor's fighter: the first member, or the second once the first is picked
+    // (the first's record is set: below kTitleRecords; 139 = none)
+    const bool choosing = (slot & 1) == 0 || GRead32(base, player + 348) < kTitleRecords ||
+                          Ours(GRead32(base, player + 348));
+    if (!rick && choosing && record >= kTitleRecords && !Ours(record))
     {
         Call(ctx, base, __imp__sub_8227AE48, { player });
         id = ctx.r3.u32;

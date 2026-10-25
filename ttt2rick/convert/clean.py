@@ -25,6 +25,7 @@ from PIL import Image
 # Diluted blood on white is a pink tint: red over green and blue, which are about equal (the waistband's tan has
 # green well over blue).
 CLEAN = {'rick_lowerbody_base.png': (0.25, 0.38, False), 'rick_globeshoes_base.png': (0.10, 0.22, True)}
+PRINT_RADIUS = 3                        # pixels around which print makes a pixel part of the print area
 MAJORITY_RADIUS = 6                     # pixels (shoes, 256 x 256)
 LIGHT_STAIN = 120                       # a shoe stain's red from which it lies on white, whatever is around
 DARK_STAIN = 60                         # and under which, with no clean pixel around, on black
@@ -126,7 +127,27 @@ def clean(rgba, ramp=(0.25, 0.38, False)):
         filled = fill(rgb, clean_px)[0]
     out = a.copy()
     out[..., :3] = np.clip(rgb * (1 - w[..., None]) + filled * w[..., None] + 0.5, 0, 255).astype(np.uint8)
+    if ramp[2]:
+        out[..., :3] = print_dirt(out[..., :3])
     return out
+
+
+def print_dirt(rgb):
+    """The shoes' yellow-green print without its dirt: the print is green over red (its darker printed patches
+    too), mud and dried blood on it orange to brown (red as high as green or higher). Those pixels take the colour of
+    the clean print around them at their own brightness, so the pattern's light and dark stays."""
+    rgb = rgb.astype(np.float32)
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    on_print = (np.maximum(r, g) > b + 40) & (rgb.mean(-1) >= 30)
+    near = box(on_print.astype(np.float64), PRINT_RADIUS) > 0.4 * (2 * PRINT_RADIUS + 1) ** 2
+    clean_print = on_print & (g > r * 1.08)
+    w = (on_print | near) * np.clip((r - g * 0.98) / 18.0, 0, 1) * np.clip((r - b - 25.0) / 20.0, 0, 1)
+    if not (w > 0.2).any():
+        return rgb.astype(np.uint8)
+    colour = fill(rgb, clean_print & (w < 0.05))[0]
+    lum = rgb.mean(-1, keepdims=True) / np.maximum(colour.mean(-1, keepdims=True), 1.0)
+    fixed = colour * np.clip(lum, 0.25, 1.3)
+    return np.clip(rgb * (1 - w[..., None]) + fixed * w[..., None] + 0.5, 0, 255).astype(np.uint8)
 
 
 def main():
