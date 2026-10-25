@@ -15,7 +15,7 @@ import sys
 
 from ..ttt2.archive import Archives
 from ..ttt2.petexy import itemdb, motbin
-from . import attacks
+from . import attacks, menus
 from .idle import GUARD_ANIM
 
 CODE, DONOR = 'ric', 'mar'
@@ -78,6 +78,8 @@ def main(game, rick, out, art=None):
         files['%s.%s' % (CODE, ext)] = open(os.path.join(rick, 'files', '%s.%s' % (DONOR, ext)), 'rb').read()
     files['%s_blood.nut' % CODE] = open(os.path.join(rick, 'files', '%s_blood.nut' % DONOR), 'rb').read()
     files['key_%08x.bin' % MOVESET_KEY] = moveset(arc, image)
+    if os.environ.get('RICK_CUSTOMIZE') == '1':     # Rick's cell in Customize: selecting him still hangs there
+        files.update(menus.files(arc))
     fx, names = effects(arc)
     files.update(fx)
     if art:

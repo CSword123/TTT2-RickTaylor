@@ -733,3 +733,20 @@ PPC_FUNC(sub_822FB4F8)
     __imp__sub_822FB4F8(ctx, base);
     if (lend) GWrite32(base, player + 84, kId);
 }
+
+// TTT2_RICK_GRIDTRACE=1: the select grids' cell lookups (sub_8227A0D8: grids r3 (mode at +76), cell r4) and the
+// cursor's fighter (sub_8227AE48: player r3), each distinct (mode, caller) once
+extern "C" PPC_FUNC(__imp__sub_8227A0D8);
+PPC_FUNC(sub_8227A0D8)
+{
+    static const bool on = std::getenv("TTT2_RICK_GRIDTRACE") != nullptr;
+    if (on)
+    {
+        static std::set<std::pair<uint32_t, uint32_t>> seen;
+        const uint32_t mode = GRead32(base, ctx.r3.u32 + 76), lr = uint32_t(ctx.lr);
+        if (seen.size() < 100 && seen.emplace(mode, lr).second)
+            std::fprintf(stderr, "[rick] grid cell (grids %08X mode %u, cell %d) lr %08X\n", ctx.r3.u32, mode,
+                         int32_t(ctx.r4.u32), lr);
+    }
+    __imp__sub_8227A0D8(ctx, base);
+}

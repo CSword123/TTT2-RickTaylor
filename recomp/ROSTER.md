@@ -153,8 +153,11 @@ address 0, which the runtime ignores) left the save update broken and the next l
 sub_82659F48 (profile records), sub_82584E88, sub_82585230, sub_82585590 (table accessors) now take Marduk's id for
 him, as sub_82584ED0 and sub_825550C8 already did: his results count as Marduk's until he has save entries of his
 own. Checked: Arcade loss, continue, back to the select screen.
-Customize mode: its grid is its own code (none of sub_8227A090..D3C8 run there) reading the title's original cell
-arrays, so Rick's cell cannot be reached there yet.
+Customize mode: its character grid is Xtal script, compiled from source at load: the title update's menu file
+0xB43EB78F defines global::CharacterSelectCursor (GetFighterID: a 3 x 22 table chr_line; IsFocusableCharacter refuses
+top-row x 0-2 and 18-21). ttt2rick.convert.menus puts Rick at x 18 (right of Violet) with same-length text edits, and
+the cursor reaches him, but choosing him hangs the menu in his costume panel's load (sub_8272A5F0), so it ships only
+with RICK_CUSTOMIZE=1. Its cursor position is mirrored in a menu variable (0x0086C4E4 in one run).
 
 Downed Rick could not be hit (fixed 2026-10-25): sub_822FB4F8 (player r3) takes a per-fighter body pointer by id
 from two 64-entry tables (0x82DD0A68; 0x82DD0B68 in down states 12-13) without a bound, so Rick's 64 read the second
