@@ -32,6 +32,15 @@ Hit reactions (REACTIONS): Marduk's b+1 and b+1,2 leave the opponent crouched (s
 the crouch), under the high follow-ups. b+1 and b+1,2 now snap the head back standing (sDm_Lhd00G / sDm_Rhd40GY,
 left and right, 40 frames, standing on counter hit too, no pushback), so the follow-ups combo on hit with 8 frames
 to spare; the heavy crouching crumple is b+1,1's finisher (copied from Va_ttlprp before the change).
+
+The spin (b+1,1) gets Marduk's b+2's (Va_rp00B) two properties of its own (EXTRA): 0x81aa, which only that move has,
+on 12 frames before its hit and off 2 after it (the faint white streak along the swing), and 0x80f8 = 2 from the
+start (on 18 of his moves, mostly sidestep attacks and tag-in jumps: probably how it turns to the opponent).
+
+The spin bounds in a juggle (BOUND): its hit conditions get TTT2's bound entry in front, [467 -> bound][466 -> air]
+[...], the requirement and reaction Marduk's own bound moves use (dwup_hei_xe_ex), and with it TTT2's Tag Assault:
+Petexy's tagsystem (third_party/petexy-ttt2: add_tag_assault, learnt from Marduk's 10 X -> XT -> XDA triples) gives
+it the tag cancel during its startup into a twin that bounces for the partner and brings the partner in.
 """
 import os
 
@@ -45,13 +54,18 @@ FIRST, FOLLOW_UP = 700.0, 900.0
 FOLLOW_UP_FRAME = 28             # b+1's frame from which its second swings come out (Marduk's: 22)
 # first and last active frames (Marduk's: 21-22, 32-32): the follow-ups' fists sweep through, out furthest only on
 # frame 20 (1534 units, 1166 on 19, 1432 on 21), so they stay out through 22 or a b+1 landed from further off whiffs
-STARTUP = {'Va_lp00B': (16, 17), 'Va_ttlprp': (20, 22)}
+# b+1,2 is i17 (the 2 a little faster, as the user asked): it hits 29 frames after b+1, inside its 40-frame reaction.
+# The spin is copied from Va_ttlprp after this, so it gets its own i20 back (STARTUP_NEW).
+STARTUP = {'Va_lp00B': (16, 17), 'Va_ttlprp': (17, 19)}
+STARTUP_NEW = {'Va_ttlplp_ric': (20, 22)}
+# damage of every hit-condition entry (Marduk's: b+1 17, b+1,2 10): the spin, the string's finisher, does more
+DAMAGE = {'Va_ttlplp_ric': 16}
 # Marduk's body animation -> (Splatterhouse animation, its frame of full extension at 30 fps, Marduk's move that
 # plays it, its first active frame at 60 fps, frames: Marduk's less the startup taken off; the striking hand, the
 # forward travel)
 ATTACKS = {
     0xDD: ('atk_punchl_high.hkx', 10, 'Va_lp00B', 16, 75, 'L', FIRST),       # b+1: AttackPunchLeftHigh (80)
-    0xDE: ('atk_punchr_high.hkx', 10, 'Va_ttlprp', 20, 73, 'R', FOLLOW_UP),  # b+1,2: AttackPunchRightHigh (85)
+    0xDE: ('atk_punchr_high.hkx', 10, 'Va_ttlprp', 17, 70, 'R', FOLLOW_UP),  # b+1,2: AttackPunchRightHigh (85)
 }
 # appended body animations, in order from SPIN_ANIM: (Splatterhouse animation, peak, frames, first active frame,
 # the striking hand, the forward travel)
@@ -61,6 +75,9 @@ NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20, 'L', FOLLOW_UP)]   # b+1,1: 360
 LEFT_ARM = 'Va_lp00B'            # hitbox 0d0c: left hand and forearm (right: 0908)
 NEW_MOVES = [('Va_ttlplp_ric', 'Va_ttlprp', SPIN_ANIM, LEFT_ARM, 'Va_lp00B', 0x40000001)]
 DELAYED = [('Va_lp00B', 'Va_ttlprp')]                   # cancels that wait for FOLLOW_UP_FRAME
+# move -> extra properties added, (frame, id, value); frame 0x8001: from the move's start (as Marduk's b+2 has them)
+EXTRA = {'Va_ttlplp_ric': [(0x8001, 0x80f8, 2), (8, 0x81aa, 1), (24, 0x81aa, 0)]}
+BOUND = ['Va_ttlplp_ric']        # moves that bound an airborne opponent (and so can be Tag Assault cancelled)
 # move -> (its reaction to replace, the new one), by the reactions' normal-hit (default) moves
 REACTIONS = {'Va_lp00B': ('sDm_KAKLcrG', 'sDm_Lhd00G'), 'Va_ttlprp': ('sDm_KAKLcrG', 'sDm_Rhd40GY')}
 
@@ -169,8 +186,7 @@ def edit_moveset(m):
             moves[i][field] = len(m.tables[table])
             m.tables[table].extend(rows)
         return [r for _, r in m.iter_list(table, moves[i][field], end_test)]
-    for name, (first, last) in STARTUP.items():
-        i = names.index(name)
+    def startup(i, name, first, last):
         d = moves[i]['first_active'] - first
         moves[i]['first_active'], moves[i]['last_active'] = first, last
         for r in own(i, 'cancel', 'cancels', lambda r: r['direction'] == 0x8000):
@@ -181,10 +197,13 @@ def edit_moveset(m):
             if r['frame']:
                 r['frame'] = max(1, r['frame'] - d)
         print('%s: i%d (%d frames earlier, its end too)' % (name, first, d))
+    for name, (first, last) in STARTUP.items():
+        startup(names.index(name), name, first, last)
     for src, dst in DELAYED:
         for r in cancel_list(names.index(src)):
             if r['move_id'] == names.index(dst):
                 r['win_end'] = r['start_frame'] = FOLLOW_UP_FRAME
+    made = {}                                       # new move name -> its index
     for name, copy, anim, hitbox_from, after, button in NEW_MOVES:
         move = dict(moves[names.index(copy)])
         move['name'] = len(strings)
@@ -192,6 +211,7 @@ def edit_moveset(m):
         move['anim'] = 0x4000 + anim
         move['hitbox'] = moves[names.index(hitbox_from)]['hitbox']
         moves.append(move)
+        made[name] = len(moves) - 1
         i = names.index(after)
         rows = [dict(r) for r in cancel_list(i)]
         like = next(r for r in rows if r['move_id'] == names.index(copy))
@@ -200,6 +220,8 @@ def edit_moveset(m):
         cancels.extend(rows)
         print('%s (move %d, body animation %d) after %s on button %#x, from frame %d' % (
             name, len(moves) - 1, anim, after, button, like['start_frame']))
+    for name, (first, last) in STARTUP_NEW.items():
+        startup(made[name], name, first, last)
     # after NEW_MOVES: their copies keep the moves' old reactions
     reactions = m.tables['reactions']
     hit_end = lambda h: h['req'] is None or m.tables['requirements'][h['req']]['condition'] == 690   # no condition
@@ -212,4 +234,51 @@ def edit_moveset(m):
             if r is not None and r['default'] is not None and r['default'] < len(names) and names[r['default']] == old:
                 h['reactions'] = to
         print('%s: hit reaction %s -> %s (reactions %d)' % (name, old, new, to))
+    props = m.tables['extra_move_properties']
+    for name, added in EXTRA.items():
+        i = made[name] if name in made else names.index(name)
+        old = [] if moves[i]['extraprops'] is None else [
+            dict(e) for _, e in m.iter_list('extra_move_properties', moves[i]['extraprops'],
+                                            lambda e: e['frame'] == 0 and e['id'] == 0)]
+        end = old.pop() if old and old[-1]['frame'] == 0 and old[-1]['id'] == 0 else dict(frame=0, id=0, value=0)
+        moves[i]['extraprops'] = len(props)
+        props.extend([dict(frame=f, id=k, value=v) for f, k, v in added] + old + [end])
+        print('%s: extra properties %s' % (name, ', '.join('%#x=%d at %s' % (k, v, 'start' if f == 0x8001 else f)
+                                                           for f, k, v in added)))
+    hit_list_end = lambda h: h['req'] is None or m.tables['requirements'][h['req']]['condition'] == 690
+    for name, damage in DAMAGE.items():
+        i = made[name] if name in made else names.index(name)
+        for h in own(i, 'hit_condition', 'hit_conditions', hit_list_end):
+            if h['damage']:
+                h['damage'] = damage
+        print('%s: damage %d' % (name, damage))
+    if BOUND:
+        import collections
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'third_party', 'petexy-ttt2', 'tools',
+                                        'characters'))
+        from ttt2char.convert import tagsystem as TS
+        t = m.tables
+        req, after = TS.bound_shape(t)
+        bound = collections.Counter(h['reactions'] for h in t['hit_conditions']
+                                    if h['reactions'] is not None and TS.has(t, h['req'], TS.BOUND)).most_common(1)[0][0]
+        tpl = TS.assault_template(t, m.aliases)
+        for name in BOUND:
+            i = made[name] if name in made else names.index(name)
+            hs = [dict(h) for h in TS.hits(t, moves[i]['hit_condition'])]
+            moves[i]['hit_condition'] = TS.write(t, 'hit_conditions', [dict(req=req, damage=hs[0]['damage'],
+                                                                            reactions=bound)] + hs)
+
+        def name_of(i):                             # names of the moves made here are in the new string block
+            off = moves[i]['name']
+            return bytes(strings[off:strings.index(0, off)]).decode('latin1')
+
+        def string(n):
+            off = len(strings)
+            strings.extend(n.encode('latin1') + b'\0')
+            return off
+        first = min(made[n] if n in made else names.index(n) for n in BOUND)
+        for x, xt, xda in TS.add_tag_assault(t, tpl, first, name_of, string):
+            print('%s: bounds (%s), Tag Assault through %s / %s (learnt from %d of Marduk\'s)' % (
+                name_of(x), names[t['reactions'][bound]['default']], name_of(xt), name_of(xda), tpl['triples']))
     return motbin.build(header, bytes(strings), m.tables, mota_blob, mota_slots)
