@@ -22,8 +22,12 @@ Timing (STARTUP; edit_moveset moves each move's active frames, end and frame-key
 amount, so only the startup changes): b+1 is i16, the left haymaker's own speed in Splatterhouse (Marduk's: i21;
 Splatterhouse's hit volume is on from about i4, the fist out at 16). Its second swings come out at FOLLOW_UP_FRAME,
 once the left one has mostly swung back (Marduk's came out at 22, right after the hit), and are i20 (the right
-haymaker's own windup; the spin's sped up 1.4x): they hit 32 frames after b+1 does, inside Marduk's own string's 33
-(hit at 21, the 2 out at 22 and i32), which combos naturally on hit.
+haymaker's own windup; the spin's sped up 1.4x): they hit 32 frames after b+1 does.
+
+Hit reactions (REACTIONS): Marduk's b+1 and b+1,2 leave the opponent crouched (sDm_KAKLcrG, 43 frames, ending in
+the crouch), under the high follow-ups. b+1 and b+1,2 now snap the head back standing (sDm_Lhd00G / sDm_Rhd40GY,
+left and right, 40 frames, standing on counter hit too, no pushback), so the follow-ups combo on hit with 8 frames
+to spare; the heavy crouching crumple is b+1,1's finisher (copied from Va_ttlprp before the change).
 """
 import os
 
@@ -48,6 +52,8 @@ NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20)]       # b+1,1: 360Punch, L_wea
 LEFT_ARM = 'Va_lp00B'            # hitbox 0d0c: left hand and forearm (right: 0908)
 NEW_MOVES = [('Va_ttlplp_ric', 'Va_ttlprp', SPIN_ANIM, LEFT_ARM, 'Va_lp00B', 0x40000001)]
 DELAYED = [('Va_lp00B', 'Va_ttlprp')]                   # cancels that wait for FOLLOW_UP_FRAME
+# move -> (its reaction to replace, the new one), by the reactions' normal-hit (default) moves
+REACTIONS = {'Va_lp00B': ('sDm_KAKLcrG', 'sDm_Lhd00G'), 'Va_ttlprp': ('sDm_KAKLcrG', 'sDm_Rhd40GY')}
 
 
 def retime(frames_src, peak, frames_dst, impact):
@@ -164,4 +170,16 @@ def edit_moveset(m):
         cancels.extend(rows)
         print('%s (move %d, body animation %d) after %s on button %#x, from frame %d' % (
             name, len(moves) - 1, anim, after, button, like['start_frame']))
+    # after NEW_MOVES: their copies keep the moves' old reactions
+    reactions = m.tables['reactions']
+    hit_end = lambda h: h['req'] is None or m.tables['requirements'][h['req']]['condition'] == 690   # no condition
+    for name, (old, new) in REACTIONS.items():
+        i = names.index(name)
+        to = next(k for k, r in enumerate(reactions) if r['default'] is not None and r['default'] < len(names)
+                  and names[r['default']] == new)
+        for h in own(i, 'hit_condition', 'hit_conditions', hit_end):
+            r = reactions[h['reactions']] if h['reactions'] is not None else None
+            if r is not None and r['default'] is not None and r['default'] < len(names) and names[r['default']] == old:
+                h['reactions'] = to
+        print('%s: hit reaction %s -> %s (reactions %d)' % (name, old, new, to))
     return motbin.build(header, bytes(strings), m.tables, mota_blob, mota_slots)
