@@ -85,7 +85,18 @@ ALONG = {}
 for S in 'LR':
     ALONG['KATA_%s_jnt' % S] = ('UDE_%s_jnt' % S, ('KATA_0_%s_jnt' % S, 'KATA_50_%s' % S, 'KATA_100_%s' % S))
     ALONG['UDE_%s_jnt' % S] = ('TE_%s_jnt' % S, ('UDE_%s_jnt' % S, 'UDE_50_%s' % S, 'UDE_100_%s' % S))
+# Her ankle-to-toe joints slope 33.7 degrees down in her bind pose (flat foot), Rick's 19.9: both are aimed along
+# Nina's foot, and Rick's stance turns his foot flat, so with the same aim her toes pointed 13.8 degrees up in game. Her
+# foot is aimed that much steeper (FOOT_SLOPE: hers minus Rick's), so his animations put her sole flat as his.
+FOOT_SLOPE = np.radians(33.7 - 19.9)
 FOOT_JOINTS = ('l_foot_jnt', 'r_foot_jnt', 'l_navicular_jnt', 'r_navicular_jnt')
+
+
+def steeper(v, angle):
+    """v turned angle further down, about the horizontal axis across it."""
+    h = np.hypot(v[0], v[2])
+    a = np.arctan2(-v[1], h) + angle
+    return np.linalg.norm(v) * np.array([v[0] / h * np.cos(a), -np.sin(a), v[2] / h * np.cos(a)])
 
 
 def weight_target(name):
@@ -156,7 +167,13 @@ def convert(game, jen_dir, out):
     names, parents = info['skeleton']['names'], info['skeleton']['parents']
     P = data['skeleton_world'][:, :3, 3].astype(np.float64)
 
-    D = rc.reposed(names, parents, P, dpos, info, data, AIM, ROLL)
+    aims = []
+    for (j, c), (a, b) in AIM:                       # the feet aimed FOOT_SLOPE steeper than Nina's
+        if a.startswith('ASHI_'):
+            dpos[b + '_jen'] = dpos[a] + steeper(dpos[b] - dpos[a], FOOT_SLOPE)
+            b += '_jen'
+        aims.append(((j, c), (a, b)))
+    D = rc.reposed(names, parents, P, dpos, info, data, aims, ROLL)
     P2 = np.array([rc._apply(D[j], P[j]) for j in range(len(names))])
     t7 = {'names': list(ANCHOR), 'parents': [-1] * len(ANCHOR),
           'world': np.array([np.vstack([np.hstack([np.eye(3), P2[names.index(r)][:, None]]), [0, 0, 0, 1]])

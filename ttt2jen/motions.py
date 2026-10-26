@@ -10,6 +10,11 @@ come out her size; but her legs are not his legs scaled (her thighs and shins ar
 bends his knees: with his root height her soles went into the floor. In every Euler (0xC8) body animation, each
 frame's root height is moved so that her lower ankle is as far over its planted height as Rick's is over his (scaled
 by the skeletons' scales): planted where his is planted. The compressed (0x64) animations, Marduk's own, are kept.
+
+Arms: Rick's stance and guard hold his upper arms about 25 degrees behind his chest (around his broad back); on her
+narrow frame the far arm came out behind her back. In those two (ARM_POSES) each upper arm is swung forward, about
+the chest's side axis, to at most ARM_BACK degrees behind the chest; the forearm and hand follow it. His attacks keep
+their arms, so they still reach where his do (the game blends from the stance into them).
 """
 import os
 import sys
@@ -17,11 +22,14 @@ import sys
 import numpy as np
 
 from ttt2rick.convert import idle
+from ttt2rick.convert.rick import _rotation
 from ttt2rick.ttt2 import fk, xbox
 from ttt2rick.ttt2.petexy import animation, bone
 
 ANKLES = ('ASHI_L_jnt', 'ASHI_R_jnt')
 JEN_MOTIONS = 0x4A454E32        # "JEN2": rick_slot.cpp kJenMotions
+ARM_POSES = (idle.STAND_ANIM, idle.GUARD_ANIM)
+ARM_BACK = np.radians(5.0)
 
 
 def ankles(bon, values):
@@ -32,6 +40,35 @@ def ankles(bon, values):
         rots = {bi[b]: bone.matrix_from_euler_xyz(vals[c]) for c, b in fk.CHANNEL_BONES.items()}
         W = fk.world(bon, rots, vals[1] * np.array([1, 1, -1]) * float(bon['scale']))
         out[f] = [W[bi[a]][1, 3] for a in ANKLES]
+    return out
+
+
+def arms_forward(bon, values):
+    """values with each upper arm (KATA channel) swung forward to at most ARM_BACK behind the chest."""
+    bi = fk.bone_index(bon)
+    rest = bone.world_matrices(bon)
+    chan = {b: c for c, b in fk.CHANNEL_BONES.items()}
+    out = values.copy()
+    for f, vals in enumerate(values):
+        rots = {bi[b]: bone.matrix_from_euler_xyz(vals[c]) for c, b in fk.CHANNEL_BONES.items()}
+        W = fk.world(bon, rots, vals[1] * np.array([1, 1, -1]) * float(bon['scale']))
+        C = W[bi['MUNE2_jnt']][:3, :3] @ rest[bi['MUNE2_jnt']][:3, :3].T      # the chest's turn from rest
+        fwd, side = C @ [0.0, 0, 1], C @ [1.0, 0, 0]
+        for S in 'LR':
+            kata = bi['KATA_%s_jnt' % S]
+            d = W[bi['UDE_%s_jnt' % S]][:3, 3] - W[kata][:3, 3]
+            d /= np.linalg.norm(d)
+            back = np.arcsin(np.clip(-d @ fwd, -1, 1))
+            if back <= ARM_BACK:
+                continue
+            # the turn about the side axis that brings it to ARM_BACK: in the plane across the side axis
+            flat = d - side * (d @ side)
+            want = flat * np.cos(back - ARM_BACK) + np.cross(side, flat) * np.sin(back - ARM_BACK) * np.sign(
+                np.cross(side, flat) @ fwd)
+            want = want + side * (d @ side)
+            R = _rotation(d, want)
+            parent = W[bon['parent'][kata]][:3, :3]
+            out[f, chan['KATA_%s_jnt' % S]] = bone.euler_xyz_from_matrix(parent.T @ R @ W[kata][:3, :3])
     return out
 
 
@@ -51,6 +88,8 @@ def refit(pack, rick, jen):
         if an['type'] != 200:
             continue
         values = an['values'].copy()
+        if index in ARM_POSES:
+            values = arms_forward(jen, values)
         over = (ankles(rick, values) - planted(rick)).min(1) * ratio      # Rick's lower foot over the floor, scaled
         mine = (ankles(jen, values) - planted(jen)).min(1)
         values[:, 1, 1] += (over - mine) / float(jen['scale'])
