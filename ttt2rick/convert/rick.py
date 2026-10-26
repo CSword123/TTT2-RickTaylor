@@ -59,6 +59,13 @@ RENDER_TRIM = np.array([1.20, 1.25, 1.30])
 # light over a darker wedge of the body. So the mask's skin is graded on to the body's colour at the seam
 # (seam_scale: the vertices the two meshes share).
 SKIN_MESHES = {'rick_neck'}
+# The wallet chain's loop at the front of the jeans (Splatterhouse binds it to the root only) is half inside the jeans
+# in his bind pose (48 of its 117 vertices behind their front, up to 15 mm): those come out in front of them by
+# CHAIN_GAP mm, or TTT2 hides most of it.
+CHAIN, CHAIN_COVER, CHAIN_GAP = 'brawlerBelt', 'brawlerDickies', 4.0
+# Splatterhouse makes the chain silver with its gloss map, which the cloth material has no use for: its colour is the
+# gloss map's x CHAIN_SHINE, in the base map's hue (dark grey on the dark jeans otherwise).
+CHAIN_SHINE = 1.25
 SKIN_SHARING = {'rick_head_geo'}         # its texture is the neck's: graded the same, so the two share it
 MARDUK_SKIN = [0x10400B9D, 0x10400B97, 0x10400BA0]     # mar.nut: the arm, neck and leg skin colours
 # material templates: kind -> (entry name or key, mesh, polygon); the cloth is a costume part of Jun's (her model pack,
@@ -384,6 +391,38 @@ def tangents(pos, nrm, uv, tris):
     return tan, bit
 
 
+def shiny(tex_dir, textures, out):
+    """A colour map for the chain: the gloss map's brightness in the base map's hue (written to out, its path)."""
+    base = np.asarray(Image.open(os.path.join(tex_dir, textures['base'].replace('.dds', '.png'))).convert('RGBA'))
+    gloss = Image.open(os.path.join(tex_dir, textures['gloss'].replace('.dds', '.png'))).convert('L')
+    gloss = np.asarray(gloss.resize(base.shape[1::-1], Image.LANCZOS), np.float32)[..., None]
+    hue = base[..., :3] / np.maximum(base[..., :3].mean(-1, keepdims=True), 1.0)
+    img = base.copy()
+    img[..., :3] = np.clip(gloss * CHAIN_SHINE * hue + 0.5, 0, 255).astype(np.uint8)
+    Image.fromarray(img).save(out)
+    return out
+
+
+def in_front(pos, cover, cover_tris, gap):
+    """pos with each vertex behind the cover mesh's front surface (+z, the side he faces) at its x, y moved to gap in
+    front of it."""
+    a, b, c = (cover[cover_tris[:, i]] for i in range(3))
+    v0, v1 = b[:, :2] - a[:, :2], c[:, :2] - a[:, :2]
+    den = v0[:, 0] * v1[:, 1] - v1[:, 0] * v0[:, 1]
+    ok = np.abs(den) > 1e-9
+    den = np.where(ok, den, 1.0)
+    out = pos.copy()
+    for i, p in enumerate(pos):
+        v2 = p[:2] - a[:, :2]
+        u = (v2[:, 0] * v1[:, 1] - v1[:, 0] * v2[:, 1]) / den
+        v = (v0[:, 0] * v2[:, 1] - v2[:, 0] * v0[:, 1]) / den
+        hit = ok & (u >= 0) & (v >= 0) & (u + v <= 1)
+        if hit.any():
+            front = (a[:, 2] + u * (b[:, 2] - a[:, 2]) + v * (c[:, 2] - a[:, 2]))[hit].max()
+            out[i, 2] = max(p[2], front + gap)
+    return out
+
+
 def polygon(pos, nrm, uv, tris, bones, wts, mat):
     if float(((np.cross(pos[tris[:, 1]] - pos[tris[:, 0]], pos[tris[:, 2]] - pos[tris[:, 0]])
                * nrm[tris].sum(1)).sum(1) < 0).mean()) > 0.5:
@@ -433,9 +472,15 @@ def convert(game, rick_dir, tex_dir, out):
     print('skin grade (Marduk / Rick x render trim, RGB):', np.round(theirs / mine * RENDER_TRIM, 3))
     seam_scale(bank, info, data, tex_dir)
     meshes, preview, images = [], [], {}
+    posed = [skin(D, data['mesh%d_positions' % k].astype(np.float64), data['mesh%d_normals' % k].astype(np.float64),
+                  data['mesh%d_joints' % k], data['mesh%d_weights' % k].astype(np.float64))
+             for k in range(len(info['meshes']))]
+    mesh_names = [m['name'] for m in info['meshes']]
     for k, m in enumerate(info['meshes']):
-        pos, nrm = skin(D, data['mesh%d_positions' % k].astype(np.float64), data['mesh%d_normals' % k].astype(
-            np.float64), data['mesh%d_joints' % k], data['mesh%d_weights' % k].astype(np.float64))
+        pos, nrm = posed[k]
+        if m['name'] == CHAIN and CHAIN_COVER in mesh_names:
+            cover = mesh_names.index(CHAIN_COVER)
+            pos = in_front(pos, posed[cover][0], data['mesh%d_triangles' % cover], CHAIN_GAP)
         uv = data['mesh%d_uv' % k].astype(np.float64)
         tris = data['mesh%d_triangles' % k]
         tj, tw = jmap[data['mesh%d_joints' % k]], data['mesh%d_weights' % k]
@@ -457,6 +502,9 @@ def convert(game, rick_dir, tex_dir, out):
         for t, src in zip(mat['textures'], tmpl[kind][0]['textures']):
             t['pad4'], t['tail'] = src['pad4'], src['tail']
         base = os.path.join(tex_dir, m['textures']['base'].replace('.dds', '.png'))
+        if m['name'] == CHAIN and 'gloss' in m['textures']:
+            os.makedirs(out, exist_ok=True)
+            base = shiny(tex_dir, m['textures'], os.path.join(out, 'chain_base.png'))
         normal = m['textures'].get('normal')
         for i, t in enumerate(mat['textures']):
             if i == 0 and kind == 'glow':
