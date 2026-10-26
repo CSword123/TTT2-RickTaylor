@@ -10,8 +10,10 @@ it spread evenly over the frames before that, the rest over the remaining length
 Every attack takes out the stance's root turn (they all end in his stance: root -40, chest -13 degrees in Havok's
 terms) and blends in from the stance's pose over BLEND_IN frames, as Splatterhouse blends out of its idle: his
 stance has the right side forward, and its left punches start wound the other way (hips +24..+55 degrees).
-Splatterhouse's root motion is turned in place, so each attack carries him forward (its `forward`: ground
-displacement, channel 0) from the end of the blend to just after the hit, eased. Splatterhouse turns him toward his
+Splatterhouse pins his hips in place and steps his feet around them (its game slides him toward his target), so
+each punch carries him (channel 0, the ground displacement) by its own footwork: every frame as far as the planted
+foot moved back under him (footwork), so his feet stay put while he steps through. The runs (the ram, the lunge)
+keep an eased charge of their own (`forward`), as footwork misses their airborne strides. Splatterhouse turns him toward his
 target as he punches, and its right punch and spin are thrown off his facing (48 and 29 degrees): in TTT2, where
 hitboxes are on the bones, they missed anything not pinned to a wall. So each attack is also turned (aim) until the
 striking hand points straight ahead on its first active frame, the turn eased in over the windup and out again over
@@ -23,8 +25,12 @@ right-hand chain is his 2, 2,2, 2,2,1 (the user's call, 2026-10-26: the right ha
 - 2: Marduk's 2 (Va_rp00) playing the right haymaker (atk_punchr_high), at i12 (Marduk's: i10);
 - 2,2: a move of his own (Va_rpbh_ric, a copy of Marduk's right follow-up Va_ttlprp) playing the right backhand
   (atk_backhand_r), from 2's frame FOLLOW_UP_FRAME, i17;
-- 2,2,1: the spin (Va_ttlplp_ric), from 2,2's frame SPIN_FRAME, i20.
-2 and 2,2 snap the head back standing (REACTIONS), so the next hit combos; the spin crumples. b+1 and its strings are
+- 2,2,1: the spin (Va_ttlplp_ric), from 2,2's frame SPIN_FRAME, i20;
+- 2,2,1,2: Splatterhouse's next X after the spin, the lariat (LariatPunch, atk_larriatpunch, right arm), a mid
+  knockdown (Va_lariat_ric) lunging forward all the way (LUNGES), from the spin's frame LARIAT_FRAME, i22;
+- 2,1: the left haymaker (atk_punchl_high) after the right one (Va_lhay_ric, a high), from FOLLOW_UP_FRAME, i17.
+2 and 2,2 snap the head back standing (REACTIONS), so the next hit combos; the spin crumples, and the lariat (a mid)
+still catches the crumpling opponent (2,1 and 2,2,1,2 are natural combos in game). b+1 and its strings are
 Marduk's own again.
 
 The 3+4 crouch is Splatterhouse's RT crouch (ttt2rick.convert.idle CROUCH), and its moves Splatterhouse's moves off it
@@ -62,18 +68,29 @@ from ..splatterhouse import hkx
 BLEND_IN = 6                     # frames at 60 fps from the stance's pose into an attack
 # forward travel (ground displacement units, by the hit): Marduk's dash 1429; his 2 443, crouch f+1 784, crouch f+2
 # 767, takedown lunge 1821 (at its contact frame 24)
-PUNCH, FOLLOW_UP = 600.0, 600.0
-RAM, SWEEP, LUNGE = 2600.0, 900.0, 2020.0   # the lunge's ease is 90% there by its contact frame: 1821
-FOLLOW_UP_FRAME = 24             # 2's frame from which 2,2 comes out (12 after its hit)
+# (the punches travel by their own footwork, FEET; the ram and the lunge are runs, whose airborne strides footwork
+# undercounts: the ram reached 193 by its hit, so they keep a charge of their own)
+RAM, LUNGE = 2600.0, 2020.0      # the lunge's ease is 90% there by its contact frame: 1821
+FEET = None                      # travel: as far as the attack's own steps take him (footwork)
+PLANT_MARGIN = 20.0              # mm the free foot must be under the planted one to take its place
+# attacks that lunge forward all the way in Splatterhouse (the user's word, 2026-10-26: the lariat's spin pivots on a
+# foot, which footwork read as 288 back by the hit): only their forward steps count
+LUNGES = {'atk_larriatpunch.hkx'}
+# travel added to an attack's footwork, eased in up to just after its hit (the user, 2026-10-26: the lariat should
+# carry him forward a bit more)
+LUNGE_EXTRA = {'atk_larriatpunch.hkx': 600.0}
+FOLLOW_UP_FRAME = 21             # 2's frame from which 2,2 and 2,1 come out (9 after its hit: they hit 26 after it,
+                                 # inside its 30-frame reaction)
 SPIN_FRAME = 28                  # 2,2's frame from which the spin comes out (11 after its hit)
+LARIAT_FRAME = 31                # the spin's frame from which the lariat comes out (11 after its hit)
 # 2 is i12; 2,2 i17 from the cancel, so it hits 29 frames after 2, inside 2's 40-frame standing reaction; the spin
 # i20, 31 after 2,2 (its reaction 40 frames too). The ram's shoulder stays out from 16 to 26 (a charge: at 16-19
 # alone it was still closing in, and whiffed in game)
 STARTUP = {'Va_rp00': (12, 13)}
 STARTUP_NEW = {'Va_rpbh_ric': (17, 19), 'Va_ttlplp_ric': (20, 22), 'Va_rpst_ric': (24, 25), 'Va_ram_ric': (16, 26),
-               'Va_sweep_ric': (18, 19)}
+               'Va_sweep_ric': (18, 19), 'Va_lhay_ric': (17, 19), 'Va_lariat_ric': (22, 24)}
 # damage of every hit-condition entry (Marduk's 2 10, Va_ttlprp 10, crouch f+1 16, f+2 22): the finishers do more
-DAMAGE = {'Va_ttlplp_ric': 16, 'Va_rpst_ric': 30, 'Va_ram_ric': 18}
+DAMAGE = {'Va_ttlplp_ric': 16, 'Va_rpst_ric': 30, 'Va_ram_ric': 18, 'Va_lariat_ric': 22}
 # the frame a move ends (back to the stance), where its animation is longer than the copied move (Va_awtac ends at
 # 40, Va_sprp at 50): the ram's outro and the sweep's follow-through play out
 END = {'Va_ram_ric': 60, 'Va_sweep_ric': 58}
@@ -86,7 +103,7 @@ DROP = {'Va_rpst_ric': ['Va_rpst00_H', 'Va_rpst00Chg'], 'Va_ram_ric': ['Va_awtac
 ATTACKS = {
     # b+2: HeavyRelease, an overhead hammer: its fist is above his head until Havok frame 13 and comes down in front
     # of him by 14, so the hit is on the downswing (13.7), with a lunge like Marduk's own b+2's
-    0x11E: ('atk_arcpunch.hkx', 13.7, 'Va_rp00B', 22, 80, 'R', 1100.0),
+    0x11E: ('atk_arcpunch.hkx', 13.7, 'Va_rp00B', 22, 80, 'R', FEET),
 }
 HOLD_FRAME = 12                  # b+2's frame at which 2 still held makes it the charged smash
 # appended body animations, in order from SPIN_ANIM: (Splatterhouse animation, peak, frames, first active frame,
@@ -94,13 +111,15 @@ HOLD_FRAME = 12                  # b+2's frame at which 2 still held makes it th
 # (the 3+4 crouch) or (an ATTACKS index, its frame))
 SPIN_ANIM = 685                  # after the guard (ttt2rick.convert.idle GUARD_ANIM 684)
 RAM_FILES = 'runram_begin.hkx+runram_loop.hkx+runram_outro.hkx'   # 15 + 16 + 26 frames: the shoulder out by 18
-NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20, 'L', FOLLOW_UP, None),           # 685 2,2,1: 360Punch (peak 14)
-               ('atk_punchdown_r.hkx', 15, 79, 24, 'R', FOLLOW_UP, (0x11E, 12)),  # 686 b+2 held: HeavyPunch
-               ('atk_punchr_high.hkx', 10, 44, 12, 'R', PUNCH, None),             # 687 2: AttackPunchRightHigh
-               ('atk_backhand_r.hkx', 11, 66, 17, 'R', FOLLOW_UP, None),          # 688 2,2: AttackBackhandRight (whips through at 11)
+NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20, 'L', FEET, None),                # 685 2,2,1: 360Punch (peak 14)
+               ('atk_punchdown_r.hkx', 15, 79, 24, 'R', FEET, (0x11E, 12)),       # 686 b+2 held: HeavyPunch
+               ('atk_punchr_high.hkx', 10, 44, 12, 'R', FEET, None),              # 687 2: AttackPunchRightHigh
+               ('atk_backhand_r.hkx', 11, 66, 17, 'R', FEET, None),               # 688 2,2: AttackBackhandRight (whips through at 11)
                (RAM_FILES, 18, 64, 16, None, RAM, 'crouch'),                      # 689 3+4,1: RT+Y, the running ram
-               ('runram_roundpunch.hkx', 15, 62, 18, 'R', SWEEP, 'crouch'),      # 690 3+4,2: RT+X, Sprint_AtkPunch
-               ('tackle_miss.hkx', 12, 90, 24, None, LUNGE, 'crouch')]           # 691 3+4,1+2: RT+B, the lunge
+               ('runram_roundpunch.hkx', 15, 62, 18, 'R', FEET, 'crouch'),       # 690 3+4,2: RT+X, Sprint_AtkPunch
+               ('tackle_miss.hkx', 12, 90, 24, None, LUNGE, 'crouch'),           # 691 3+4,1+2: RT+B, the lunge
+               ('atk_punchl_high.hkx', 10, 50, 17, 'L', FEET, None),              # 692 2,1: AttackPunchLeftHigh
+               ('atk_larriatpunch.hkx', 16, 75, 22, 'R', FEET, None)]             # 693 2,2,1,2: LariatPunch (right arm out at 16)
 # Marduk's moves given an appended animation (by its index in NEW_ATTACKS)
 ANIMS = {'Va_rp00': SPIN_ANIM + 2, 'Va_spear': SPIN_ANIM + 6}
 # Rick's own moves: (name, the move copied, its body animation, hitbox from, after moves, button, the cancel's frame:
@@ -112,18 +131,30 @@ NEW_MOVES = [('Va_rpbh_ric', 'Va_ttlprp', SPIN_ANIM + 3, 'Va_rp00', ['Va_rp00'],
              ('Va_ttlplp_ric', 'Va_ttlprp', SPIN_ANIM, LEFT_ARM, ['Va_rpbh_ric'], 0x40000001, SPIN_FRAME),
              ('Va_rpst_ric', 'Va_rpst00', SPIN_ANIM + 1, 'Va_rp00B', ['Va_rp00B'], 0x2 << 9, HOLD_FRAME),
              ('Va_ram_ric', 'Va_awtac', SPIN_ANIM + 4, 'Va_awtac', CROUCH_MOVES, 0x40000001, 'like'),
-             ('Va_sweep_ric', 'Va_sprp', SPIN_ANIM + 5, 'Va_rp00', CROUCH_MOVES, 0x40000002, 'like')]
+             ('Va_sweep_ric', 'Va_sprp', SPIN_ANIM + 5, 'Va_rp00', CROUCH_MOVES, 0x40000002, 'like'),
+             ('Va_lhay_ric', 'Va_ttlprp', SPIN_ANIM + 7, LEFT_ARM, ['Va_rp00'], 0x40000001, FOLLOW_UP_FRAME),
+             ('Va_lariat_ric', 'Va_ttlprp', SPIN_ANIM + 8, 'Va_rp00', ['Va_ttlplp_ric'], 0x40000002, LARIAT_FRAME)]
 # move -> extra properties added, (frame, id, value); frame 0x8001: from the move's start (as Marduk's b+2 has them)
 EXTRA = {'Va_ttlplp_ric': [(0x8001, 0x80f8, 2), (8, 0x81aa, 1), (24, 0x81aa, 0)]}
-BOUND = ['Va_ttlplp_ric']        # moves that bound an airborne opponent (and so can be Tag Assault cancelled)
-# move -> (its reaction to replace, the new one), by the reactions' normal-hit (default) moves: 2 and 2,2 leave the
-# opponent standing for 40 frames (the right haymaker snaps the head to the right, the backhand to the left)
-REACTIONS = {'Va_rp00': ('sDm_KAOR27G_Va', 'sDm_Rhd40GY'), 'Va_rpbh_ric': ('sDm_KAKLcrG', 'sDm_Lhd00G'),
-             'Va_ram_ric': ('sDm_Sty00_', 'sDw_KAO00_')}   # the ram knocks down (Va_awtac's only staggered)
+BOUND = ['Va_ttlplp_ric']
+# move -> (its reaction to replace, the new one), by the reactions' normal-hit (default) moves: 2, 2,2 and 2,1 leave
+# the opponent standing (face hits: 30 frames after 2, 40 after 2,2 and 2,1), the spin crumples. A reaction move
+# without the bit 0x8 in its bitfield (Marduk's 2's sDm_KAOR27G_Va, and sDm_Rhd40GY, sDm_Lhd00(G) this file used)
+# shakes the screen as the opponent takes the hit; these have it, as the jab's and 1,2's (measured in game,
+# 2026-10-26: the user found 2,2 and 2,1 still shook)
+REACTIONS = {'Va_rp00': ('sDm_KAOR27G_Va', 'sDm_IKAO00R'), 'Va_rpbh_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl'),
+             'Va_ram_ric': ('sDm_Sty00_', 'sDw_KAO00_'),   # the ram knocks down (Va_awtac's only staggered)
+             'Va_lhay_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl'), 'Va_ttlplp_ric': ('sDm_KAKLcrG', 'sDm_KAKLcr'),
+             'Va_lariat_ric': ('sDm_KAKLcrG', 'sDw_KAO00_')}
 # hit levels (low byte: 0x10f low, 0x217 mid, 0x512 high; 0x200000 marks a heavy hit, which shakes the screen: Marduk's
-# haymakers and power moves have it, and Va_ttlprp's copies with it): the backhand without it (the user found 2,2,1
-# shook too much: only its finisher, the spin, keeps it), the sweep a true low
-HITLEVEL = {'Va_rpbh_ric': 0x217, 'Va_sweep_ric': 0x10f}
+# haymakers and power moves have it, and Va_ttlprp's copies with it): none of the 2,2,1,2 string has it (the user
+# found its shakes excessive, 2026-10-26), the sweep a true low, the left haymaker a high like 2
+# moves without the extra property 0x8001, which Marduk's 2 and his Va_ttlprp (so its copies) have, as his power
+# moves (b+1, the headbutts, the stomp): it shakes the screen on a hit (measured in game, 2026-10-26, the
+# background's shift frame to frame over a burst of frames: 2 shook for 12 frames on a hit, the jab and 1,2 not)
+NO_SHAKE = ['Va_rp00', 'Va_rpbh_ric', 'Va_lhay_ric', 'Va_ttlplp_ric', 'Va_lariat_ric']
+HITLEVEL = {'Va_rpbh_ric': 0x217, 'Va_ttlplp_ric': 0x217, 'Va_sweep_ric': 0x10f, 'Va_lhay_ric': 0x512,
+            'Va_lariat_ric': 0x217}
 # the frame by which an attack's travel is all done (default: a few frames after its hit): the ram runs on through
 # its loop (to frame 34, where runram_outro starts) instead of charging in place once it hit
 TRAVEL_UNTIL = {RAM_FILES: 34}
@@ -152,6 +183,26 @@ def travel(frames, impact, forward, until=None):
     return out
 
 
+def footwork(tposes, bon, forward_only=False):
+    """(frames, 3) ground displacement that keeps the planted foot where it is: Splatterhouse pins his hips and
+    steps his feet around them (its game slides him toward the target), so each frame he travels (along z) as far
+    as the planted ankle moved back under him. The planted foot is the lower ankle; the other one takes over only
+    once it is PLANT_MARGIN lower, so a foot rolling onto its toes is not mistaken for a step. The game multiplies
+    channel 0 by the skeleton's scale, as it does the root (fitted on Marduk's own walks). forward_only: the steps
+    that would take him back (a foot pivoting in a spin) are left out, so he only ever goes forward."""
+    names = [n[4:] if n.startswith('cha:') else n for n in bon['names']]
+    ankles = np.array([[t[names.index('ASHI_%s_jnt' % s)] for s in 'LR'] for t in tposes])   # (frames, 2, 3)
+    out = np.zeros((len(tposes), 3))
+    planted = int(np.argmin(ankles[0, :, 1]))
+    for f in range(1, len(tposes)):
+        other = 1 - planted
+        if ankles[f, other, 1] < ankles[f, planted, 1] - PLANT_MARGIN:
+            planted = other
+        step = -(ankles[f, planted, 2] - ankles[f - 1, planted, 2]) / float(bon['scale'])
+        out[f, 2] = out[f - 1, 2] + (max(step, 0.0) if forward_only else step)
+    return out
+
+
 def aim(frames, impact):
     """0..1 per frame: how much of the aiming turn is on (in over the windup, held a few frames, out by the end)."""
     k = np.arange(frames, dtype=float)
@@ -161,23 +212,33 @@ def aim(frames, impact):
 
 def _attack(retarget, start, name, peak, frames, impact, hand, forward, stance):
     """(raw animation, Havok joints, TTT2 joints) of an attack: retimed, turned to aim (unless hand is None: a ram, a
-    lunge, led by the body), carried forward."""
+    lunge, led by the body), carried forward (forward None: by its own footwork)."""
     from .idle import load_animation
     an = load_animation(retarget.folder, name, retarget.sk)
     times = retime(an['frames'], peak, frames, impact)
     base = retarget.yaws[stance]
-    kw = dict(times=times, blend_from=(start, BLEND_IN), ground=travel(frames, impact, forward, TRAVEL_UNTIL.get(name)))
-    if hand is None:
-        return retarget(name, yaw=base, **kw)
-    names = [n[4:] if n.startswith('cha:') else n for n in retarget.bon['names']]
-    h = names.index('TE_%s_jnt' % hand)
-    _, _, tp = retarget(name, yaw=base, **kw)
-    x, _, z = tp[impact][h]
-    off = np.arctan2(x, z)                          # the hand's direction from straight ahead (+z)
-    out = retarget(name, yaw=base + off * aim(frames, impact), **kw)
-    x, _, z = out[2][impact][h]
-    print('%s: aimed %.0f degrees (the %s hand now %.0f off)' % (name, np.degrees(off), hand,
-                                                                 np.degrees(np.arctan2(x, z))))
+    kw = dict(times=times, blend_from=(start, BLEND_IN))
+    if forward is not None:
+        kw['ground'] = travel(frames, impact, forward, TRAVEL_UNTIL.get(name))
+    yaw = base
+    if hand is not None:
+        names = [n[4:] if n.startswith('cha:') else n for n in retarget.bon['names']]
+        h = names.index('TE_%s_jnt' % hand)
+        _, _, tp = retarget(name, yaw=base, **kw)
+        x, _, z = tp[impact][h]
+        off = np.arctan2(x, z)                      # the hand's direction from straight ahead (+z)
+        yaw = base + off * aim(frames, impact)
+    out = retarget(name, yaw=yaw, **kw)
+    if forward is None:
+        kw['ground'] = footwork(out[2], retarget.bon, name in LUNGES) + travel(frames, impact,
+                                                                                LUNGE_EXTRA.get(name, 0.0))
+        out = retarget(name, yaw=yaw, **kw)
+        g = kw['ground'][:, 2]
+        print('%s: its footwork carries it %.0f by the hit, %.0f in all' % (name, g[impact], g[-1]))
+    if hand is not None:
+        x, _, z = out[2][impact][h]
+        print('%s: aimed %.0f degrees (the %s hand now %.0f off)' % (name, np.degrees(off), hand,
+                                                                     np.degrees(np.arctan2(x, z))))
     return out
 
 
@@ -341,6 +402,15 @@ def edit_moveset(m):
     for name, level in HITLEVEL.items():
         moves[index(name)]['hitlevel'] = level
         print('%s: hit level %#x' % (name, level))
+    for name in NO_SHAKE:
+        i = index(name)
+        if moves[i]['extraprops'] is None:
+            continue
+        rows = [dict(e) for _, e in m.iter_list('extra_move_properties', moves[i]['extraprops'],
+                                                 lambda e: e['frame'] == 0 and e['id'] == 0)]
+        moves[i]['extraprops'] = len(props)
+        props.extend(e for e in rows if e['id'] != 0x8001)
+        print('%s: no extra property 0x8001 (%d left)' % (name, len(rows) - 1 - sum(e['id'] == 0x8001 for e in rows)))
     hit_list_end = lambda h: h['req'] is None or m.tables['requirements'][h['req']]['condition'] == 690
     for name, damage in DAMAGE.items():
         i = made[name] if name in made else names.index(name)

@@ -10,8 +10,13 @@ python -m ttt2jen.convert <game folder> <her export (ttt2jen.extract's out, e.g.
   floor.
 - Materials: skin for her face and the bare skin of her body mesh (whose one texture holds her skin, T-shirt and
   jeans: its triangles are split by the texture under them, skin_weight at their UV centre), blended overlay for the
-  hair cards, scalp and lashes (alpha), cloth for the rest. Her skin is graded as Rick's (RENDER_TRIM: TTT2's
-  lighting darkens Splatterhouse's painted shading), to her own face's colour.
+  hair cards, scalp and lashes (alpha), cloth for the rest. Her skin material is Nina's arm's (SKIN; Rick's is
+  Marduk's, whose specular is stronger), and her skin is graded to Nina's skin colour times SKIN_TRIM (measured in
+  game, 2026-10-26: Nina's as is clipped her red in the stage light and read yellow, with Rick's RENDER_TRIM it went
+  white; the trim lands her midriff at G/R 0.67, B/R 0.55, near the user's picture's 0.73, 0.61): Rick's is Marduk's, and in the user's pictures of the two
+  Jennifer's skin is paler than Rick's and less red (G/R x 1.09, B/R x 1.18), which from Marduk's texture (G/R 0.76,
+  B/R 0.62) is the fair fighters' (Nina, Lili: 0.83, 0.72). Graded to her own face's colour, as at first, she came
+  out in Marduk's tan (the user saw it, 2026-10-26).
 - UVs: Splatterhouse tiles some of hers (her body mesh's V runs 0-2, the shoes' U too) and TTT2 does not repeat
   textures, so each vertex is moved back into 0-1 by its triangles' tile (no vertex is shared between tiles).
 - Clothing: she is dressed in every Splatterhouse texture (T-shirt and jeans; nothing under them), so nothing is
@@ -33,6 +38,8 @@ from ttt2rick.ttt2.extract import VIEWS
 from ttt2rick.ttt2.petexy import bone, itemdb, nud, skeleton
 
 DONOR, CODE = 'nin', 'jen'
+SKIN = (DONOR + '.nud', 'ude_A_O_OBJ', 0)         # her skin material: Nina's arm's
+SKIN_TRIM = np.array([0.90, 0.87, 0.92])           # on Nina's colour: as is, the stage light clipped her red and she read yellow; with Rick's RENDER_TRIM, white
 FACE_TEXTURE = 'jeni_face_color.dds'
 BODY_TEXTURE = 'jennifer_body_02_color.dds'          # skin, T-shirt and jeans: split by skin_weight
 OVERLAY_TEXTURES = {'hair_combine_color.dds', 'jeni_head_02.dds'}
@@ -191,10 +198,12 @@ def convert(game, jen_dir, out):
     jmap = np.array([bidx[weight_target(n)] for n in names])
 
     skel_world = bone.world_matrices(skel)
-    tmpl = rc.templates(arc)
-    face = rc.skin_median(np.asarray(Image.open(os.path.join(tex_dir, FACE_TEXTURE.replace('.dds', '.png')))
-                                     .convert('RGBA')))
-    bank = rc.TextureBank(skin_target=face * rc.RENDER_TRIM)
+    tmpl = rc.templates(arc, dict(rc.TEMPLATES, skin=SKIN), rc.TEMPLATE_TEXTURES + [DONOR + '.nut'])
+    skin_tex = {t['gidx']: t for t in xbox.read_nut(arc.read_name(DONOR + '.nut'))['textures']}[
+        tmpl['skin'][0]['textures'][0]['id']]
+    nina = rc.skin_median(xbox.decode_texture(skin_tex).reshape(1, -1, 4))
+    print('skin: Nina\'s colour %s x render trim' % nina.astype(int))
+    bank = rc.TextureBank(skin_target=nina * SKIN_TRIM)
 
     def material(kind, base, normal):
         mat, means, fmts = tmpl[kind]

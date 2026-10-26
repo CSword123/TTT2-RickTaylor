@@ -26,7 +26,8 @@ files, plus patches for the recomp.
 | Rick -> TTT2 body files under Marduk's names: A-pose -> Marduk's T-pose, Marduk's skeleton moved to Rick's joints, skin weights to TTT2 bones, `.nud`/`.nut`/`.bon`, body-only item database | **done**: `ttt2rick/convert/rick.py` (brawler costume, 15 meshes, 6107 vertices, 1.5 MB textures) |
 | Install into the title update's overlay archive (`update/data100`), stock recomp exe | **done**: `ttt2rick/ttt2/overlay.py`; in game (v0.1.9 under Proton): Rick replaces Marduk in Practice, fights with Marduk's moves |
 | Character loader hooks in the recomp (own roster slots instead of replacing Marduk): Rick (id 64) and Jennifer (id 65) | **done**: `recomp/runtime/rick_slot.cpp`, see `recomp/ROSTER.md` |
-| Splatterhouse moves (Havok `.hkx` animations -> TTT2 moves) | later |
+| Splatterhouse moves (Havok `.hkx` animations -> TTT2 moves) | **in progress**: `ttt2rick/convert/attacks.py` (each punch travels by its own footwork) |
+| Rick's voice: Splatterhouse's grunts (XMA2 copied, not re-encoded) in a bank of his own | **done**: `ttt2rick/convert/voice.py`, `recomp/runtime/rick_voice.cpp` |
 
 ## Use
 
@@ -51,7 +52,8 @@ for m in portrait hud layouts; do .venv/bin/python -m ttt2rick.convert.$m <game 
 .venv/bin/python -m ttt2jen.extract <splatterhouse assets/data> work/jennifer && .venv/bin/python -m ttt2jen.convert <game folder> work/jennifer work/ttt2/jen   # her body
 .venv/bin/python -m ttt2jen.motions work/ttt2/rick_slot/art/files/key_52494332.bin work/ttt2/rick_slot/files/ric.bon work/ttt2/jen/files/jen.bon work/ttt2/jen/files
 .venv/bin/python -m ttt2jen.slot <game folder> work/ttt2/jen work/ttt2/rick_slot work/ttt2/jen_slot
-.venv/bin/python -m ttt2rick.ttt2.overlay <game folder> install work/ttt2/rick_slot/files work/ttt2/jen_slot/files
+.venv/bin/python -m ttt2rick.convert.voice <game folder> <splatterhouse assets/data> work/ttt2/rick_voice   # his grunts (se_Chr_ric)
+.venv/bin/python -m ttt2rick.ttt2.overlay <game folder> install work/ttt2/rick_slot/files work/ttt2/jen_slot/files work/ttt2/rick_voice/files
 ```
 
 Debugging single files:

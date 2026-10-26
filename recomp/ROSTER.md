@@ -60,6 +60,12 @@ docs/ARCHITECTURE.md "Added fighters"). For Versus/Practice with a team includin
    `sub_06F0449C`), the costume chooser (`sub_0580D690`, `sub_02669380`, `sub_033E3460`).
 6. Voice: one of the free bank ids bound to Marduk's banks (`sub_07A5CAC8`, `sub_07A5CAA4`, `sub_07A5D01C`,
    `sub_079E5B1C`, `sub_079E5D64`, `sub_0796F4C0`, `sub_0796F218`).
+   Done for Rick's se_Chr (2026-10-26, `recomp/runtime/rick_voice.cpp`): 360 counterparts `sub_825A55F8` (id ->
+   se_Chr game bank), `sub_825A5300(2, id)` (se_Dwi), `sub_825A6010` (game bank -> key, a switch over 0..261; free:
+   1, 9, 95, 201, 259), `sub_825A3318` (the sound table 0x82DE8C28, 8252 x {tone, bank, group, flags}),
+   `sub_825A2DF8` / `sub_825A2F08` (a voice list's n-th entry / count by category; static lists 0x82DE86F8),
+   `sub_825A3450` (remaps sound ids 8253..8433). Rick: game bank 1 = se_Chr_ric, sound ids 8434+. His se_Dwi
+   (win quotes) and intro banks are still none.
 
 Each Wii U function's 360 counterpart is found from the data it touches (as the record accessors were) and checked
 with the trace hooks.

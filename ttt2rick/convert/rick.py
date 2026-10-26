@@ -363,15 +363,15 @@ def seam_scale(bank, info, data, tex_dir):
         print('%s: skin graded x %s to the body at %d seam vertices' % (m['name'], np.round(ratio, 3), len(i)))
 
 
-def templates(arc):
-    """{kind: (material, [slot mean RGBA], [slot format])} from TEMPLATES."""
+def templates(arc, kinds=TEMPLATES, sources=TEMPLATE_TEXTURES):
+    """{kind: (material, [slot mean RGBA], [slot format])} from kinds (TEMPLATES), their textures in sources."""
     def read(ref):
         return arc.read_name(ref) if isinstance(ref, str) else arc.read(ref)
     tex = {}
-    for src in TEMPLATE_TEXTURES:
+    for src in sources:
         tex.update({t['gidx']: t for t in xbox.read_nut(read(src))['textures']})
     out = {}
-    for kind, (src, mesh, poly) in TEMPLATES.items():
+    for kind, (src, mesh, poly) in kinds.items():
         find = {m['name']: m for m in xbox.read_nud(read(src))['meshes']}
         mat = find[mesh]['polys'][poly]['materials'][0]
         means = [xbox.decode_texture(tex[t['id']]).reshape(-1, 4).mean(0).round().astype(int) if t['id'] in tex
