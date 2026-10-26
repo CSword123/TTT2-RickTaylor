@@ -59,13 +59,22 @@ RENDER_TRIM = np.array([1.20, 1.25, 1.30])
 # light over a darker wedge of the body. So the mask's skin is graded on to the body's colour at the seam
 # (seam_scale: the vertices the two meshes share).
 SKIN_MESHES = {'rick_neck'}
-# The wallet chain's loop at the front of the jeans (Splatterhouse binds it to the root only) is half inside the jeans
-# in his bind pose (48 of its 117 vertices behind their front, up to 15 mm): those come out in front of them by
-# CHAIN_GAP mm, or TTT2 hides most of it.
-CHAIN, CHAIN_COVER, CHAIN_GAP = 'brawlerBelt', 'brawlerDickies', 4.0
-# Splatterhouse makes the chain silver with its gloss map, which the cloth material has no use for: its colour is the
-# gloss map's x CHAIN_SHINE, in the base map's hue (dark grey on the dark jeans otherwise).
+# The belt buckle (brawlerBelt: Splatterhouse binds it to the root only, with the wallet chain's texture) is half
+# inside the jeans in his bind pose (48 of its 117 vertices behind their front, up to 15 mm): those come out in front
+# of them by BUCKLE_GAP mm, or TTT2 hides most of it.
+BUCKLE, JEANS, BUCKLE_GAP = 'brawlerBelt', 'brawlerDickies', 4.0
+# Splatterhouse makes the buckle and chain silver with their gloss map, which the cloth material has no use for: their
+# colour is the gloss map's x CHAIN_SHINE, in the base map's hue (dark grey on the dark jeans otherwise).
 CHAIN_SHINE = 1.25
+# The chain that hangs from his right hip is a prop of its own (characters/props/xbox360/walletchain.nif, exported by
+# ttt2rick.splatterhouse.extract as walletchain.npz next to the states): rigid segments, one per node, about
+# CHAIN_STEP mm apart, which Splatterhouse's physics hangs from his belt. Here CHAIN_SEGMENTS of them hang still in a U
+# on his right side (side view: from CHAIN_ENDS, front and back belt loops (z, y), sagging to their length), clear of
+# the jeans by CHAIN_CLEAR; skinned to the hips and, more the lower they hang, the right thigh (up to
+# CHAIN_THIGH). The links are cut out of their texture's alpha (CHAIN_CUT) and drawn blended, as the hair.
+CHAIN_PROP, CHAIN_SEGMENTS, CHAIN_STEP = 'walletchain.npz', 6, 119.0
+CHAIN_ENDS = ((30.0, 1350.0), (-230.0, 1350.0))
+CHAIN_CLEAR, CHAIN_THIGH, CHAIN_CUT = 2.0, 0.6, 150
 SKIN_SHARING = {'rick_head_geo'}         # its texture is the neck's: graded the same, so the two share it
 MARDUK_SKIN = [0x10400B9D, 0x10400B97, 0x10400BA0]     # mar.nut: the arm, neck and leg skin colours
 # material templates: kind -> (entry name or key, mesh, polygon); the cloth is a costume part of Jun's (her model pack,
@@ -391,21 +400,26 @@ def tangents(pos, nrm, uv, tris):
     return tan, bit
 
 
-def shiny(tex_dir, textures, out):
-    """A colour map for the chain: the gloss map's brightness in the base map's hue (written to out, its path)."""
+def shiny(tex_dir, textures, out, cut=None):
+    """A colour map for the buckle or chain: the gloss map's brightness in the base map's hue (written to out, its path); with
+    cut, alpha 255 where the base map's is at least cut, 0 elsewhere."""
     base = np.asarray(Image.open(os.path.join(tex_dir, textures['base'].replace('.dds', '.png'))).convert('RGBA'))
     gloss = Image.open(os.path.join(tex_dir, textures['gloss'].replace('.dds', '.png'))).convert('L')
     gloss = np.asarray(gloss.resize(base.shape[1::-1], Image.LANCZOS), np.float32)[..., None]
     hue = base[..., :3] / np.maximum(base[..., :3].mean(-1, keepdims=True), 1.0)
     img = base.copy()
     img[..., :3] = np.clip(gloss * CHAIN_SHINE * hue + 0.5, 0, 255).astype(np.uint8)
+    if cut is not None:
+        img[..., 3] = np.where(base[..., 3] >= cut, 255, 0)
     Image.fromarray(img).save(out)
     return out
 
 
-def in_front(pos, cover, cover_tris, gap):
+def in_front(pos, cover, cover_tris, gap, turn=None):
     """pos with each vertex behind the cover mesh's front surface (+z, the side he faces) at its x, y moved to gap in
-    front of it."""
+    front of it; with turn (a rotation taking the outward direction to +z), along that direction."""
+    if turn is not None:
+        return in_front(pos @ turn.T, cover @ turn.T, cover_tris, gap) @ turn
     a, b, c = (cover[cover_tris[:, i]] for i in range(3))
     v0, v1 = b[:, :2] - a[:, :2], c[:, :2] - a[:, :2]
     den = v0[:, 0] * v1[:, 1] - v1[:, 0] * v0[:, 1]
@@ -421,6 +435,53 @@ def in_front(pos, cover, cover_tris, gap):
             front = (a[:, 2] + u * (b[:, 2] - a[:, 2]) + v * (c[:, 2] - a[:, 2]))[hit].max()
             out[i, 2] = max(p[2], front + gap)
     return out
+
+
+def vertex_normals(pos, tris):
+    n = np.zeros_like(pos)
+    face = np.cross(pos[tris[:, 1]] - pos[tris[:, 0]], pos[tris[:, 2]] - pos[tris[:, 0]])
+    for col in range(3):
+        np.add.at(n, tris[:, col], face)
+    return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
+
+
+RIGHT_OUT = np.array([[0.0, 0, 1], [0, 1, 0], [-1, 0, 0]])     # his right (-x) to +z
+
+
+def hanging_chain(prop, cover, cover_tris):
+    """(positions, normals, uv, triangles, how low each vertex hangs (0 at the belt, 1 at the bottom)) of the
+    chain's segments hung in a U on his right side, clear of the cover (the jeans)."""
+    (za, ya), (zb, yb) = CHAIN_ENDS
+    length = CHAIN_SEGMENTS * CHAIN_STEP
+    t = np.linspace(0, 1, 401)
+    def curve(sag):
+        return np.stack([za + (zb - za) * t, ya + (yb - ya) * t - sag * np.sin(np.pi * t)], 1)
+    lo, hi = 0.0, length
+    for _ in range(50):                              # the sag that gives the chain its length
+        sag = (lo + hi) / 2
+        c = curve(sag)
+        lo, hi = (sag, hi) if np.linalg.norm(np.diff(c, axis=0), axis=1).sum() < length else (lo, sag)
+    c = curve(sag)
+    run = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(c, axis=0), axis=1))])
+    zy = np.stack([np.interp(np.arange(CHAIN_SEGMENTS + 1) * CHAIN_STEP, run, c[:, k]) for k in range(2)], 1)
+    nodes = np.stack([np.full(len(zy), -100.0), zy[:, 1], zy[:, 0]], 1)
+    nodes = in_front(nodes, cover, cover_tris, 18.0 + CHAIN_CLEAR, RIGHT_OUT)       # its centre line on the jeans
+    pos, uv, tris = [], [], []
+    for k in range(CHAIN_SEGMENTS):
+        local = prop['seg%d_positions' % k].astype(np.float64)
+        along = nodes[k + 1] - nodes[k]
+        along /= np.linalg.norm(along)
+        out = np.array([-1.0, 0, 0]) - along * -along[0]
+        out /= np.linalg.norm(out)
+        R = np.stack([out, -along, np.cross(out, -along)], 1)       # its local x out, its length (-y) along
+        p = local @ R.T + nodes[k]
+        tris.append(prop['seg%d_triangles' % k] + sum(len(q) for q in pos))
+        pos.append(p)
+        uv.append(prop['seg%d_uv' % k].astype(np.float64))
+    pos, tris = np.concatenate(pos), np.concatenate(tris)
+    pos = in_front(pos, cover, cover_tris, CHAIN_CLEAR, RIGHT_OUT)
+    low = np.clip((max(ya, yb) - pos[:, 1]) / sag, 0, 1)
+    return pos, vertex_normals(pos, tris), np.concatenate(uv), tris, low
 
 
 def polygon(pos, nrm, uv, tris, bones, wts, mat):
@@ -471,6 +532,23 @@ def convert(game, rick_dir, tex_dir, out):
     bank = TextureBank(skin_target=mine * (theirs / mine * RENDER_TRIM))
     print('skin grade (Marduk / Rick x render trim, RGB):', np.round(theirs / mine * RENDER_TRIM, 3))
     seam_scale(bank, info, data, tex_dir)
+    def material(kind, base, normal, skin_sharing=False):
+        mat, means, fmts = tmpl[kind]
+        mat = json.loads(json.dumps(mat, default=lambda b: b.hex()))     # deep copy (bytes -> hex, restored below)
+        for t, src in zip(mat['textures'], tmpl[kind][0]['textures']):
+            t['pad4'], t['tail'] = src['pad4'], src['tail']
+        for i, t in enumerate(mat['textures']):
+            if i == 0 and kind == 'glow':
+                t['id'] = bank.glow(base)
+            elif i == 0:
+                t['id'] = bank.colour(base, kind == 'overlay', skin=kind == 'skin' or skin_sharing)
+            elif normal and abs(int(means[i][1]) - 128) < 16 and abs(int(means[i][3]) - 128) < 16:   # a normal map slot
+                t['id'] = bank.normal(os.path.join(tex_dir, normal.replace('.dds', '.png')))
+            else:
+                t['id'] = bank.constant(means[i], fmts[i])
+            t['wrap_s'] = t['wrap_t'] = 1        # repeat (Splatterhouse UVs run past 0..1)
+        return mat
+
     meshes, preview, images = [], [], {}
     posed = [skin(D, data['mesh%d_positions' % k].astype(np.float64), data['mesh%d_normals' % k].astype(np.float64),
                   data['mesh%d_joints' % k], data['mesh%d_weights' % k].astype(np.float64))
@@ -478,9 +556,9 @@ def convert(game, rick_dir, tex_dir, out):
     mesh_names = [m['name'] for m in info['meshes']]
     for k, m in enumerate(info['meshes']):
         pos, nrm = posed[k]
-        if m['name'] == CHAIN and CHAIN_COVER in mesh_names:
-            cover = mesh_names.index(CHAIN_COVER)
-            pos = in_front(pos, posed[cover][0], data['mesh%d_triangles' % cover], CHAIN_GAP)
+        if m['name'] == BUCKLE and JEANS in mesh_names:
+            cover = mesh_names.index(JEANS)
+            pos = in_front(pos, posed[cover][0], data['mesh%d_triangles' % cover], BUCKLE_GAP)
         uv = data['mesh%d_uv' % k].astype(np.float64)
         tris = data['mesh%d_triangles' % k]
         tj, tw = jmap[data['mesh%d_joints' % k]], data['mesh%d_weights' % k]
@@ -497,25 +575,11 @@ def convert(game, rick_dir, tex_dir, out):
         kind = 'overlay' if m['name'] in OVERLAY_MESHES else 'glow' if m['name'] in GLOW_MESHES \
             else 'skin' if m['textures']['base'] == SKIN_TEXTURE or m['name'] in SKIN_MESHES \
             else 'cloth'
-        mat, means, fmts = tmpl[kind]
-        mat = json.loads(json.dumps(mat, default=lambda b: b.hex()))     # deep copy (bytes -> hex, restored below)
-        for t, src in zip(mat['textures'], tmpl[kind][0]['textures']):
-            t['pad4'], t['tail'] = src['pad4'], src['tail']
         base = os.path.join(tex_dir, m['textures']['base'].replace('.dds', '.png'))
-        if m['name'] == CHAIN and 'gloss' in m['textures']:
+        if m['name'] == BUCKLE and 'gloss' in m['textures']:
             os.makedirs(out, exist_ok=True)
-            base = shiny(tex_dir, m['textures'], os.path.join(out, 'chain_base.png'))
-        normal = m['textures'].get('normal')
-        for i, t in enumerate(mat['textures']):
-            if i == 0 and kind == 'glow':
-                t['id'] = bank.glow(base)
-            elif i == 0:
-                t['id'] = bank.colour(base, kind == 'overlay', skin=kind == 'skin' or m['name'] in SKIN_SHARING)
-            elif normal and abs(int(means[i][1]) - 128) < 16 and abs(int(means[i][3]) - 128) < 16:   # a normal map slot
-                t['id'] = bank.normal(os.path.join(tex_dir, normal.replace('.dds', '.png')))
-            else:
-                t['id'] = bank.constant(means[i], fmts[i])
-            t['wrap_s'] = t['wrap_t'] = 1        # repeat (Splatterhouse UVs run past 0..1)
+            base = shiny(tex_dir, m['textures'], os.path.join(out, 'buckle_base.png'))
+        mat = material(kind, base, m['textures'].get('normal'), m['name'] in SKIN_SHARING)
         poly = polygon(pos, nrm, uv, tris, bones, wts, mat)
         single = bidx['ATAMA_jnt_assist' if m['name'] in HEAD_MESHES else 'KOSHI_jnt']
         sph = nud.bounding_sphere(pos)
@@ -524,6 +588,26 @@ def convert(game, rick_dir, tex_dir, out):
         preview.append(dict(name=m['name'], positions=pos, normals=nrm, uv=uv, triangles=tris,
                             textures={'base': base}))
         images[base] = np.asarray(Image.open(base).convert('RGBA'))
+    prop = os.path.join(os.path.dirname(os.path.normpath(rick_dir)), CHAIN_PROP)
+    chain = next((m for m in info['meshes'] if m['name'] == BUCKLE), None)       # (its textures are the chain's)
+    if os.path.exists(prop) and chain is not None and JEANS in mesh_names:
+        cover = mesh_names.index(JEANS)
+        pos, nrm, uv, tris, low = hanging_chain(np.load(prop), posed[cover][0], data['mesh%d_triangles' % cover])
+        thigh = (low * CHAIN_THIGH).astype(np.float32)
+        bones = np.zeros((len(pos), 4), np.uint32)
+        bones[:, 0], bones[:, 1:] = bidx['KOSHI_jnt'], bidx['MOMO_R_jnt']
+        wts = np.zeros((len(pos), 4), np.float32)
+        wts[:, 0], wts[:, 1] = 1 - thigh, thigh
+        base = shiny(tex_dir, chain['textures'], os.path.join(out, 'chain_links.png'), cut=CHAIN_CUT)
+        poly = polygon(pos, nrm, uv, tris, bones, wts, material('overlay', base, chain['textures'].get('normal')))
+        sph = nud.bounding_sphere(pos)
+        meshes.append(dict(name='rick_walletChain', sphere=sph, center=sph[:3], sort_bias=0.0, zero=0,
+                           boneflag=0x2c, singlebind=bidx['KOSHI_jnt'], polys=[poly]))
+        preview.append(dict(name='walletChain', positions=pos, normals=nrm, uv=uv, triangles=tris,
+                            textures={'base': base}))
+        images[base] = np.asarray(Image.open(base).convert('RGBA'))
+        print('wallet chain: %d segments, down to %.0f mm below the belt, %d vertices' % (
+            CHAIN_SEGMENTS, max(y for _, y in CHAIN_ENDS) - pos[:, 1].min(), len(pos)))
     allp = np.concatenate([p['verts']['pos'] for mm in meshes for p in mm['polys']])
     model = dict(version=0x0201, sphere=nud.bounding_sphere(allp), bone_first=None, meshes=meshes)
     textures = bank.textures()

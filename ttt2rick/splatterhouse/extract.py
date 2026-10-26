@@ -9,6 +9,9 @@ Out, per state (brawler, berserker):
   <state>/model.json     skeleton names / parents, meshes (name, material, textures)
   <state>/rick.obj, .mtl the bind pose, for a modelling program
   textures/*.png         every texture of the file (top mip)
+  walletchain.npz        the wallet chain prop (characters/props/xbox360/walletchain.nif, with a data folder): per
+                         segment k: seg{k}_positions (v, 3) mm in its own frame, _uv, _triangles, _world (4, 4) its
+                         place in the prop; textures the segments use (the same as rick.nif's brawlerBelt)
 
 TTT2 space: millimetres, Y up, the fighter facing +Z with his left at +X. Gamebryo's (Z up, facing +X, left +Y)
 goes there by the cyclic swap (x, y, z) -> (y, z, x): a rotation, so nothing is mirrored.
@@ -24,6 +27,7 @@ from . import rickmodel
 from ..common import x360tex
 
 RICK_NIF = 'characters/rick_havok/xbox360/rick.nif'
+CHAIN_NIF = 'characters/props/xbox360/walletchain.nif'
 M_TO_MM = 1000.0
 # Gamebryo -> TTT2 axes: new = SWAP @ old
 SWAP = np.array([[0, 1, 0], [0, 0, 1], [1, 0, 0]], float)
@@ -102,6 +106,23 @@ def write_obj(meshes, out):
             base += len(p)
 
 
+def export_chain(path, out):
+    """The wallet chain prop's segments (rigid meshes, one per node), in TTT2 axes."""
+    model = rickmodel.load(path)
+    arrays, k = {}, 0
+    for i, b in sorted(model.blocks.items()):
+        if b['type'] != 'NiMesh':
+            continue
+        st = model.streams(i)
+        arrays['seg%d_positions' % k] = to_ttt2_points(st[('POSITION', 0)]).astype(np.float32)
+        arrays['seg%d_uv' % k] = st[('TEXCOORD', 0)].astype(np.float32)
+        arrays['seg%d_triangles' % k] = model.triangles(st).astype(np.int32)
+        arrays['seg%d_world' % k] = to_ttt2_matrix(model.world_of(i)[None])[0]
+        k += 1
+    np.savez_compressed(os.path.join(out, 'walletchain.npz'), **arrays)
+    return k
+
+
 def main(src, out):
     model = rickmodel.load(find_nif(src))
     tex_dir = os.path.join(out, 'textures')
@@ -113,6 +134,10 @@ def main(src, out):
         print('%-10s %2d meshes %6d vertices %6d triangles' % (
             state, len(meshes), sum(len(m['positions']) for m in meshes), sum(len(m['triangles']) for m in meshes)))
     print('textures  %d -> %s' % (len(os.listdir(tex_dir)), tex_dir))
+    chain = next((c for c in (os.path.join(src, CHAIN_NIF), os.path.join(src, 'data', CHAIN_NIF))
+                  if os.path.isdir(src) and os.path.exists(c)), None)
+    if chain:
+        print('wallet chain %d segments' % export_chain(chain, out))
 
 
 if __name__ == '__main__':
