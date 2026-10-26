@@ -29,8 +29,9 @@ Marduk's own again.
 
 The 3+4 crouch is Splatterhouse's RT crouch (ttt2rick.convert.idle CROUCH), and its moves Splatterhouse's moves off it
 (playersprintattackstates.smf): 1 is the running ram (RT+Y: RunRam_Begin -> RunRam_Loop -> runram_outro, the left
-shoulder first), on a copy of Marduk's crouch tackle (Va_awtac, his f+1 from the crouch); 2 is the sweeping punch
-(RT+X: Sprint_AtkPunch, runram_roundpunch, right fist), on a copy of his crouch f+2 (Va_sprp); 1+2 stays Marduk's
+shoulder first), on a copy of Marduk's crouch tackle (Va_awtac, his f+1 from the crouch), a knockdown (sDw_KAO00_)
+that runs on through the loop (TRAVEL_UNTIL) past the fallen opponent; 2 is the sweeping punch (RT+X:
+Sprint_AtkPunch, runram_roundpunch, right fist), on a copy of his crouch f+2 (Va_sprp), a true low (HITLEVEL); 1+2 stays Marduk's
 takedown (Va_spear, into his mount: Va_spear01, the opponent's Mt_ moves), its lunge playing Splatterhouse's (RT+B:
 DashAttackGrab, tackle_miss), carried as far as Marduk's (1821 units at its contact frame 24), so the takedown,
 which plays Marduk's own animations in step with the opponent's, starts where his would.
@@ -62,7 +63,7 @@ BLEND_IN = 6                     # frames at 60 fps from the stance's pose into 
 # forward travel (ground displacement units, by the hit): Marduk's dash 1429; his 2 443, crouch f+1 784, crouch f+2
 # 767, takedown lunge 1821 (at its contact frame 24)
 PUNCH, FOLLOW_UP = 600.0, 600.0
-RAM, SWEEP, LUNGE = 1500.0, 900.0, 2020.0   # the lunge's ease is 90% there by its contact frame: 1821
+RAM, SWEEP, LUNGE = 2600.0, 900.0, 2020.0   # the lunge's ease is 90% there by its contact frame: 1821
 FOLLOW_UP_FRAME = 24             # 2's frame from which 2,2 comes out (12 after its hit)
 SPIN_FRAME = 28                  # 2,2's frame from which the spin comes out (11 after its hit)
 # 2 is i12; 2,2 i17 from the cancel, so it hits 29 frames after 2, inside 2's 40-frame standing reaction; the spin
@@ -117,7 +118,15 @@ EXTRA = {'Va_ttlplp_ric': [(0x8001, 0x80f8, 2), (8, 0x81aa, 1), (24, 0x81aa, 0)]
 BOUND = ['Va_ttlplp_ric']        # moves that bound an airborne opponent (and so can be Tag Assault cancelled)
 # move -> (its reaction to replace, the new one), by the reactions' normal-hit (default) moves: 2 and 2,2 leave the
 # opponent standing for 40 frames (the right haymaker snaps the head to the right, the backhand to the left)
-REACTIONS = {'Va_rp00': ('sDm_KAOR27G_Va', 'sDm_Rhd40GY'), 'Va_rpbh_ric': ('sDm_KAKLcrG', 'sDm_Lhd00G')}
+REACTIONS = {'Va_rp00': ('sDm_KAOR27G_Va', 'sDm_Rhd40GY'), 'Va_rpbh_ric': ('sDm_KAKLcrG', 'sDm_Lhd00G'),
+             'Va_ram_ric': ('sDm_Sty00_', 'sDw_KAO00_')}   # the ram knocks down (Va_awtac's only staggered)
+# hit levels (low byte: 0x10f low, 0x217 mid, 0x512 high; 0x200000 marks a heavy hit, which shakes the screen: Marduk's
+# haymakers and power moves have it, and Va_ttlprp's copies with it): the backhand without it (the user found 2,2,1
+# shook too much: only its finisher, the spin, keeps it), the sweep a true low
+HITLEVEL = {'Va_rpbh_ric': 0x217, 'Va_sweep_ric': 0x10f}
+# the frame by which an attack's travel is all done (default: a few frames after its hit): the ram runs on through
+# its loop (to frame 34, where runram_outro starts) instead of charging in place once it hit
+TRAVEL_UNTIL = {RAM_FILES: 34}
 
 
 def retime(frames_src, peak, frames_dst, impact):
@@ -133,11 +142,13 @@ def ease(x):
     return x * x * (3 - 2 * x)
 
 
-def travel(frames, impact, forward):
-    """(frames, 3) ground displacement: `forward` along z, eased from BLEND_IN to a few frames after the hit."""
+def travel(frames, impact, forward, until=None):
+    """(frames, 3) ground displacement: `forward` along z, eased from BLEND_IN to a few frames after the hit (or to
+    frame `until`)."""
     k = np.arange(frames, dtype=float)
     out = np.zeros((frames, 3))
-    out[:, 2] = forward * ease((k - BLEND_IN) / max(1, impact + 4 - BLEND_IN))
+    end = until if until is not None else impact + 4
+    out[:, 2] = forward * ease((k - BLEND_IN) / max(1, end - BLEND_IN))
     return out
 
 
@@ -155,7 +166,7 @@ def _attack(retarget, start, name, peak, frames, impact, hand, forward, stance):
     an = load_animation(retarget.folder, name, retarget.sk)
     times = retime(an['frames'], peak, frames, impact)
     base = retarget.yaws[stance]
-    kw = dict(times=times, blend_from=(start, BLEND_IN), ground=travel(frames, impact, forward))
+    kw = dict(times=times, blend_from=(start, BLEND_IN), ground=travel(frames, impact, forward, TRAVEL_UNTIL.get(name)))
     if hand is None:
         return retarget(name, yaw=base, **kw)
     names = [n[4:] if n.startswith('cha:') else n for n in retarget.bon['names']]
@@ -327,6 +338,9 @@ def edit_moveset(m):
         props.extend([dict(frame=f, id=k, value=v) for f, k, v in added] + old + [end])
         print('%s: extra properties %s' % (name, ', '.join('%#x=%d at %s' % (k, v, 'start' if f == 0x8001 else f)
                                                            for f, k, v in added)))
+    for name, level in HITLEVEL.items():
+        moves[index(name)]['hitlevel'] = level
+        print('%s: hit level %#x' % (name, level))
     hit_list_end = lambda h: h['req'] is None or m.tables['requirements'][h['req']]['condition'] == 690
     for name, damage in DAMAGE.items():
         i = made[name] if name in made else names.index(name)

@@ -349,9 +349,39 @@ RECORD_FIELD(82276408, GRead32(base, r + 80))
 namespace {
 constexpr uint32_t kHudResource = 176, kHudDonor[3] = { 48, 123, 182 };
 const Fighter* g_asked = nullptr;
+// Once both members are picked, the select screen (sub_82643A08) hides the second when the two have the same UI row:
+// Rick, Jennifer and Marduk share Marduk's row 18. There the second member's record questions (kSecondSites) answer
+// Steve's row 17 (kAliasRow) when the first is another of the three, and Steve's labels (`ste`) and big portrait
+// are the second member's (sub_826278E0, sub_8262B2D0). While the second is still being chosen, SelectSecondMembers
+// draws it instead (the rank bar takes its stats by row: Steve's row would show Steve's).
+constexpr uint32_t kAliasRow = 17;
+constexpr uint32_t kFirstSites[] = { 0x82643DE8, 0x82643DF8, 0x82643E70, 0x82643E9C };
+constexpr uint32_t kSecondSites[] = { 0x82643E3C, 0x82643E7C, 0x82643EC8 };
+bool g_inSelect = false;
+int g_firstKey = -3;                        // the first member: an added fighter's index, -1 Marduk, -3 anyone else
+int RecordKey(uint32_t record)
+{
+    for (int k = 0; k < int(std::size(kFighters)); ++k)
+        if (kFighters[k].on && g.ready && (record == kFighters[k].record0 || record == kFighters[k].record0 + 1))
+            return k;
+    return record == kDonorRecord0 || record == kDonorRecord0 + 1 ? -1 : -3;
+}
+bool SelectAlias(uint32_t lr, uint32_t record)
+{
+    if (!g_inSelect) return false;
+    for (uint32_t x : kFirstSites) if (x == lr) { g_firstKey = RecordKey(record); return false; }
+    for (uint32_t x : kSecondSites)
+        if (x == lr)
+        {
+            const int key = RecordKey(record);
+            return key != -3 && g_firstKey != -3 && key != g_firstKey;
+        }
+    return false;
+}
 }
 PPC_FUNC(sub_82276380)                      // record -> +8 UI row
 {
+    if (SelectAlias(uint32_t(ctx.lr), ctx.r3.u32)) { ctx.r3.u64 = kAliasRow; return; }
     g_asked = ByRecord(ctx.r3.u32);
     if (g_asked) { ctx.r3.u64 = GRead32(base, RecordAddr(*g_asked, ctx.r3.u32) + 8); return; }
     LogOddRecord("82276380", ctx.r3.u32, uint32_t(ctx.lr));
@@ -368,27 +398,35 @@ PPC_FUNC(sub_823D11B8)                      // a HUD picture (r4 resource, r5 nu
 }
 
 extern "C" PPC_FUNC(__imp__sub_82B62BE8);
+const char* g_labelFrom = nullptr;          // a code token renamed in labels, and what to (sub_826278E0's scope)
+const char* g_labelTo = nullptr;
 PPC_FUNC(sub_82B62BE8)                      // (sprite r3, label name r4): jump to the label
 {
     const uint32_t name = ctx.r4.u32;
-    if (g_asked && name)
-    {
-        const char* text = reinterpret_cast<const char*>(base + name);
-        const size_t n = strnlen(text, 120);
-        for (size_t at = 0; at + 3 <= n; ++at)  // the code token: "mar" between '_' (or the ends)
-            if (std::memcmp(text + at, "mar", 3) == 0 && (at == 0 || text[at - 1] == '_') &&
+    // the code token to replace ("mar") and what with
+    const char* from = nullptr; const char* to = nullptr;
+    const char* text = name ? reinterpret_cast<const char*>(base + name) : "";
+    const size_t n = strnlen(text, 120);
+    auto token = [&](const char* code) {
+        for (size_t at = 0; at + 3 <= n; ++at)  // the code token between '_' (or the ends)
+            if (std::memcmp(text + at, code, 3) == 0 && (at == 0 || text[at - 1] == '_') &&
                 (at + 3 == n || text[at + 3] == '_'))
-            {
-                static uint32_t ring = 0;
-                const uint32_t copy = g.labels + 128 * (ring++ & 3);
-                std::memcpy(base + copy, text, n + 1);
-                std::memcpy(base + copy + at, g_asked->code, 3);
-                ctx.r4.u64 = copy;
-                if (Traced())
-                    std::fprintf(stderr, "[added] label %s -> %s, lr %08X\n", text,
-                                 reinterpret_cast<const char*>(base + copy), uint32_t(ctx.lr));
-                break;
-            }
+                return int(at);
+        return -1;
+    };
+    int at = -1;
+    if (g_labelFrom && (at = token(g_labelFrom)) >= 0) { from = g_labelFrom; to = g_labelTo; }
+    else if (g_asked && (at = token("mar")) >= 0) { from = "mar"; to = g_asked->code; }
+    if (from && g.ready)
+    {
+        static uint32_t ring = 0;
+        const uint32_t copy = g.labels + 128 * (ring++ & 3);
+        std::memcpy(base + copy, text, n + 1);
+        std::memcpy(base + copy + at, to, 3);
+        ctx.r4.u64 = copy;
+        if (Traced())
+            std::fprintf(stderr, "[added] label %s -> %s, lr %08X\n", text,
+                         reinterpret_cast<const char*>(base + copy), uint32_t(ctx.lr));
     }
     __imp__sub_82B62BE8(ctx, base);
 }
@@ -403,6 +441,8 @@ void AddedLendPortraits(uint8_t* base, const Fighter& f);
 PPC_FUNC(sub_82276348)
 {
     const uint32_t id = ctx.r3.u32, lr = uint32_t(ctx.lr);
+    if (g_inSelect && lr == kFirstSites[0])
+        g_firstKey = ById(id) ? int(ById(id) - kFighters) : id == kDonorId ? -1 : -3;
     g_asked = ById(id);
     if (g_asked) { AddedLendPortraits(base, *g_asked); ctx.r3.u64 = GRead32(base, g_asked->records + 8); }
     else __imp__sub_82276348(ctx, base);
@@ -763,7 +803,9 @@ extern "C" PPC_FUNC(__imp__sub_826409E0);
 PPC_FUNC(sub_826409E0)
 {
     g_selectScreen = ctx.r3.u32;
+    const uint32_t slot = ctx.r4.u32, row = ctx.r5.u32, lr = uint32_t(ctx.lr);
     __imp__sub_826409E0(ctx, base);
+    if (Traced()) std::fprintf(stderr, "[added] big portrait slot %u row %u -> %u, lr %08X\n", slot, row, ctx.r3.u32, lr);
 }
 
 extern "C" PPC_FUNC(__imp__sub_8227AE48);
@@ -794,11 +836,29 @@ const Fighter* SlotFighter(PPCContext& ctx, uint8_t* base, uint32_t slot)
 }
 
 extern "C" PPC_FUNC(__imp__sub_8262B2D0);
+bool SecondAliased(uint8_t* base, uint32_t player);
 PPC_FUNC(sub_8262B2D0)
 {
     const uint32_t lister = ctx.r3.u32, row = ctx.r4.u32, slot = ctx.r5.u32;
     uint32_t at = 0, theirs = 0;
-    if (On() && g_lister == lister && row == kDonorUiRow && slot < 4)
+    if (On() && g_lister == lister && row == kAliasRow && (slot & 1) && slot < 4 && g_selectScreen)
+    {
+        const uint32_t players = GRead32(base, g_selectScreen + 148);
+        const uint32_t player = players ? GRead32(base, players + (slot < 2 ? 48 : 56)) : 0;
+        if (player && SecondAliased(base, player))
+        {
+            const Fighter* f = ByRecord(GRead32(base, player + 352));
+            const uint32_t first = GRead32(base, lister + (slot < 2 ? 4 : 24));
+            const uint32_t frame = f ? f->frames[slot < 2 ? 0 : 1] : GRead32(base, first + 4 * kDonorUiRow);
+            if (frame)
+            {
+                at = first + 4 * row;
+                theirs = GRead32(base, at);
+                GWrite32(base, at, frame);
+            }
+        }
+    }
+    else if (On() && g_lister == lister && row == kDonorUiRow && slot < 4)
     {
         const PPCContext saved = ctx;
         const Fighter* f = SlotFighter(ctx, base, slot);
@@ -844,6 +904,12 @@ PPC_FUNC(sub_82659F48)
 namespace {
 void AddedTableIndex(uint8_t* base, uint32_t table, PPCRegister& index, uint32_t lr, const char* fn)
 {
+    if (Traced())
+    {
+        static std::set<std::tuple<std::string, uint32_t, uint32_t>> seen;
+        if (seen.size() < 300 && seen.emplace(fn, index.u32, lr).second)
+            std::fprintf(stderr, "[added] table %s [%u], lr %08X\n", fn, index.u32, lr);
+    }
     if (!(ById(index.u32) && table)) return;
     const uint32_t info = GRead32(base, table + 68);
     if (info && index.u32 < GRead32(base, info + 12)) return;
@@ -906,8 +972,42 @@ PPC_FUNC(sub_8227A0D8)
 // TTT2_RICK_TRACE: the 2D screens' sprite label jumps (sub_826278E0: layout r3, sprite name r4, label r5, both
 // MSVC strings: the text inline under 16 characters of capacity, else at +0), each distinct one once.
 extern "C" PPC_FUNC(__imp__sub_826278E0);
+const Fighter* MemberFighter(PPCContext& ctx, uint8_t* base, uint32_t player, uint32_t member);
+bool SecondAliased(uint8_t* base, uint32_t player);
+extern const char* g_labelFrom;
+extern const char* g_labelTo;
+uint32_t g_selectUpdateScreen = 0;
 PPC_FUNC(sub_826278E0)
 {
+    // On the select screen, a member's sprites (chara_face_yoko_main_p1, p1_chara_waku_sub, ...) are that member's: the
+    // label renaming (sub_82B62BE8) goes by its fighter, not by whoever was asked about last (the update asks about
+    // both members, then jumps both members' labels).
+    const Fighter* asked = g_asked;
+    bool scoped = false;
+    if (On() && g.ready && g_selectUpdateScreen && ctx.r3.u32 == g_selectUpdateScreen)
+    {
+        const uint32_t s = ctx.r4.u32, at = GRead32(base, s + 20) >= 16 ? GRead32(base, s) : s;
+        const char* name = reinterpret_cast<const char*>(base + at);
+        const size_t n = strnlen(name, 100);
+        const std::string sprite(name, n);
+        const int member = sprite.find("_main") != std::string::npos ? 0 : sprite.find("_sub") != std::string::npos ? 1 : -1;
+        const int player = sprite.find("p1") != std::string::npos ? 0 : sprite.find("p2") != std::string::npos ? 1 : -1;
+        const uint32_t players = GRead32(base, g_selectUpdateScreen + 148);
+        const uint32_t obj = member >= 0 && player >= 0 && players ? GRead32(base, players + (player ? 56 : 48)) : 0;
+        if (obj)
+        {
+            const PPCContext saved = ctx;
+            const Fighter* f = MemberFighter(ctx, base, obj, uint32_t(member));
+            ctx = saved;
+            g_asked = f;
+            if (member == 1 && SecondAliased(base, obj))
+            {
+                g_labelFrom = "ste";
+                g_labelTo = f ? f->code : "mar";
+            }
+            scoped = true;
+        }
+    }
     if (Traced())
     {
         auto text = [&](uint32_t s) {
@@ -921,6 +1021,28 @@ PPC_FUNC(sub_826278E0)
                          g_asked ? g_asked->name : "-", uint32_t(ctx.lr));
     }
     __imp__sub_826278E0(ctx, base);
+    if (scoped) { g_asked = asked; g_labelFrom = g_labelTo = nullptr; }
+}
+
+// Whether a select screen player's second member answers kAliasRow (both picked, the two different fighters of
+// Rick, Jennifer and Marduk)
+bool SecondAliased(uint8_t* base, uint32_t player)
+{
+    if (GRead32(base, player + 340) < 2) return false;
+    const int a = RecordKey(GRead32(base, player + 348)), b = RecordKey(GRead32(base, player + 352));
+    return a != -3 && b != -3 && a != b;
+}
+
+// A select screen player object's member (0, 1): its picked record, or before its pick the cursor's fighter (the
+// first member, or the second once the first is picked); nullptr when not an added fighter.
+const Fighter* MemberFighter(PPCContext& ctx, uint8_t* base, uint32_t player, uint32_t member)
+{
+    const uint32_t record = GRead32(base, player + 348 + 4 * member);
+    if (record < kTitleRecords || ByRecord(record)) return ByRecord(record);
+    const uint32_t picked = GRead32(base, player + 340);
+    if (picked != member) return nullptr;
+    Call(ctx, base, __imp__sub_8227AE48, { player });
+    return ById(ctx.r3.u32);
 }
 
 // The VS screen (sub_826353D8) shows a side's second member's panel unless the side is solo, which sub_82634870
@@ -950,3 +1072,146 @@ PPC_FUNC(sub_82634870)
             std::fprintf(stderr, "[added] side %u: records %u and %u, a tag team\n", side, first, second);
     }
 }
+
+// TTT2_RICK_TRACE: the select screen's big portraits (sub_826409E0: screen r3, slot r4, row r5) and its sprites'
+// visibility (sub_826277B0: screen r3, sprite name r4 (MSVC string), shown r5), each distinct one once
+extern "C" PPC_FUNC(__imp__sub_826277B0);
+namespace {
+std::string GuestString(uint8_t* base, uint32_t s)
+{
+    const uint32_t at = GRead32(base, s + 20) >= 16 ? GRead32(base, s) : s;
+    return std::string(reinterpret_cast<const char*>(base + at), strnlen(reinterpret_cast<const char*>(base + at), 100));
+}
+}
+PPC_FUNC(sub_826277B0)
+{
+    if (Traced())
+    {
+        static std::set<std::tuple<std::string, uint32_t, uint32_t>> seen;
+        const std::string sprite = GuestString(base, ctx.r4.u32);
+        if (seen.size() < 400 && seen.emplace(sprite, ctx.r5.u32 & 0xFF, uint32_t(ctx.lr)).second)
+            std::fprintf(stderr, "[added] sprite %s shown %u, lr %08X\n", sprite.c_str(), ctx.r5.u32 & 0xFF,
+                         uint32_t(ctx.lr));
+    }
+    __imp__sub_826277B0(ctx, base);
+}
+
+// The select screen's update (sub_82643A08: screen r3) shows each player's fighters by UI row, and redraws a slot only
+// when its row changes: rows it last showed at screen + 4 * (43 + player) (the main face), (45 + player) (the second
+// member's face) and (47 + player) (the big portraits; a change starts a short countdown, then sub_826409E0 shows the
+// slot). An added fighter has Marduk's row, so moving the cursor from Rick to Jennifer (or between either and
+// Marduk) kept the last one's pictures, and once both members were picked the second one's big portrait, hidden at the
+// pick, never came back (the user's report: Rick, then Jennifer, in tag). Whenever whom a player shows changes (the
+// cursor's fighter, the members' records) and an added fighter is or was among them, those rows are forgotten (-1),
+// so the screen redraws them as for any other change, and the per-slot hooks above give each slot its own fighter.
+extern "C" PPC_FUNC(__imp__sub_826277B0);
+extern "C" PPC_FUNC(__imp__sub_826278E0);
+extern uint32_t g_selectUpdateScreen;
+PPC_FUNC(sub_8228CBD8);          // std::string(this, char*)
+PPC_FUNC(sub_822864E8);          // ~std::string(this)
+namespace {
+// The update hides or skips a player's second member while both members have the same UI row (it takes them for one
+// fighter): Rick, Jennifer and Marduk all have Marduk's row 18, so with two of them in a team the second member's big
+// portrait stayed the first's, or vanished once picked. After the update, such a second member (picked, or under the
+// cursor once the first is picked) is drawn here as the update draws one: its big portrait (sub_826409E0: slot
+// player * 2 + 1, row 18, which sub_8262B2D0 above gives the member's own frame), its frame label
+// (p<n>_chara_waku_sub -> p<n>_chara_waku_mar) and small face (chara_face_yoko_sub_p<n> -> chara_face_yoko_mar),
+// renamed to its code by sub_82B62BE8; once per change (g_drawn).
+int g_drawn[2] = { -99, -99 };               // the second member drawn here (fighter key * 4 + members picked)
+int FighterKey(uint32_t record, uint32_t id, bool byRecord)
+{
+    if (byRecord) { if (const Fighter* f = ByRecord(record)) return int(f - kFighters);
+                    return record == kDonorRecord0 || record == kDonorRecord0 + 1 ? -1 : -3; }
+    if (const Fighter* f = ById(id)) return int(f - kFighters);
+    return id == kDonorId ? -1 : -3;
+}
+uint32_t GuestStr(PPCContext& ctx, uint8_t* base, uint32_t obj, uint32_t text, const char* value)
+{
+    std::memcpy(base + text, value, std::strlen(value) + 1);
+    Call(ctx, base, sub_8228CBD8, { obj, text });
+    return obj;
+}
+void SelectSecondMembers(PPCContext& ctx, uint8_t* base, uint32_t screen)
+{
+    const uint32_t players = On() && g.ready && screen ? GRead32(base, screen + 148) : 0;
+    for (uint32_t p = 0; players && p < 2; ++p)
+    {
+        const uint32_t player = GRead32(base, players + (p ? 56 : 48));
+        if (!player) continue;
+        const uint32_t size = GRead32(base, player + 336), picked = GRead32(base, player + 340);
+        int first = -3, second = -3;
+        if (size == 2 && picked == 1)               // once both are picked, kAliasRow does it
+        {
+            first = FighterKey(GRead32(base, player + 348), 0, true);
+            Call(ctx, base, __imp__sub_8227AE48, { player });
+            second = FighterKey(0, ctx.r3.u32, false);
+        }
+        const bool ours = first != -3 && second != -3 && first != second;
+        if (!ours) { g_drawn[p] = -99; continue; }
+        const int key = second * 4 + int(picked);
+        if (g_drawn[p] == key) continue;
+        g_drawn[p] = key;
+        const Fighter* asked = g_asked;
+        g_asked = second >= 0 ? &kFighters[second] : nullptr;
+        Call(ctx, base, __imp__sub_826409E0, { screen, 2 * p + 1, kDonorUiRow });
+        const uint32_t s = g.scratch + 640, t = g.scratch + 768;   // 3 string objects (32 bytes), their texts
+        char sprite[40], label[40];
+        std::snprintf(sprite, sizeof(sprite), "p%u_chara_waku_sub", p + 1);
+        std::snprintf(label, sizeof(label), "p%u_chara_waku_mar", p + 1);
+        GuestStr(ctx, base, s, t, sprite);
+        GuestStr(ctx, base, s + 32, t + 48, label);
+        Call(ctx, base, __imp__sub_826277B0, { screen, s, 1 });
+        Call(ctx, base, __imp__sub_826278E0, { screen, s, s + 32 });
+        Call(ctx, base, sub_822864E8, { s });
+        Call(ctx, base, sub_822864E8, { s + 32 });
+        std::snprintf(sprite, sizeof(sprite), "chara_face_yoko_sub_p%u", p + 1);
+        GuestStr(ctx, base, s, t, sprite);
+        GuestStr(ctx, base, s + 32, t + 48, "chara_face_yoko_mar");
+        Call(ctx, base, __imp__sub_826277B0, { screen, s, 1 });
+        Call(ctx, base, __imp__sub_826278E0, { screen, s, s + 32 });
+        Call(ctx, base, sub_822864E8, { s });
+        Call(ctx, base, sub_822864E8, { s + 32 });
+        g_asked = asked;
+        if (Traced())
+            std::fprintf(stderr, "[added] select player %u: second member %d drawn (first %d)\n", p, second, first);
+    }
+}
+struct Shown { uint32_t cursor = ~0u, first = ~0u, second = ~0u; };
+Shown g_shown[2];
+bool Involves(const Shown& s) { return ById(s.cursor) || ByRecord(s.first) || ByRecord(s.second); }
+}
+extern "C" PPC_FUNC(__imp__sub_82643A08);
+PPC_FUNC(sub_82643A08)
+{
+    const uint32_t screen = ctx.r3.u32;
+    const uint32_t players = On() && g.ready && screen ? GRead32(base, screen + 148) : 0;
+    for (uint32_t p = 0; players && p < 2; ++p)
+    {
+        const uint32_t player = GRead32(base, players + (p ? 56 : 48));
+        if (!player) continue;
+        Shown now;
+        now.first = GRead32(base, player + 348);
+        now.second = GRead32(base, player + 352);
+        Call(ctx, base, __imp__sub_8227AE48, { player });
+        now.cursor = ctx.r3.u32;
+        ctx.r3.u64 = screen;
+        Shown& was = g_shown[p];
+        if ((now.cursor != was.cursor || now.first != was.first || now.second != was.second) &&
+            (Involves(now) || Involves(was)))
+        {
+            for (uint32_t k : { 43u, 45u, 47u }) GWrite32(base, screen + 4 * (k + p), ~0u);
+            if (Traced())
+                std::fprintf(stderr, "[added] select player %u: cursor %d, records %d/%d: rows redrawn\n", p,
+                             int(now.cursor), int(now.first), int(now.second));
+        }
+        was = now;
+    }
+    g_selectUpdateScreen = screen;
+    g_inSelect = On() && g.ready;
+    g_firstKey = -3;
+    __imp__sub_82643A08(ctx, base);
+    g_inSelect = false;
+    SelectSecondMembers(ctx, base, screen);
+    g_selectUpdateScreen = 0;
+}
+

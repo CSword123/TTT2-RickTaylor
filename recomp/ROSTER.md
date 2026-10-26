@@ -215,3 +215,12 @@ active 16-26: at 16-19 it whiffed while still closing in), 2 the sweeping punch 
 and 1+2 Marduk's takedown with Splatterhouse's lunge (RT+B, tackle_miss), into his mount. Each move's striking limb
 at its hit frame and its hitbox bones (TE_R = 9, UDE_R 8, KATA_L 11, UDE_L 12, TE_L 13) were checked against the
 buttons: 1 left arm, 2 right arm. Jennifer gets all of it through Rick's moveset (JEN1) and motion pack (JEN2).
+
+Select screen with two of Rick, Jennifer and Marduk in one team (2026-10-26): the update (sub_82643A08) treats two
+members with the same UI row as one fighter (it skips or hides the second, and redraws a member only when its row
+changes), and all three have row 18. While the second member is chosen, rick_slot.cpp draws it itself after the update
+(SelectSecondMembers: big portrait, frame and face labels); once both are picked, the second member's record questions
+answer Steve's row 17 (kAliasRow) and Steve's labels and portrait become the member's. Labels on the select screen are
+renamed by the member their sprite belongs to (`_main`/`_sub`, `p1`/`p2`), not by the last fighter asked about. Left
+over: the rank bars' small face icons can show the other member, and a picked second member's bar reads "Beginner"
+(Steve's row; it showed an empty bar before).
