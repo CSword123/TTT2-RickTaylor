@@ -254,6 +254,8 @@ def xmem_block(payload, p, size, window_bits=17):
     while len(d.out) < size:
         clen, = struct.unpack_from('>H', payload, p)
         p += 2
+        if clen == 0:                   # padding between blocks (jennifer.nif): not a frame, the header bit is next
+            continue
         d.frame(payload[p:p + clen], min(FRAME, size - len(d.out)))
         p += clen
     return bytes(d.out[:size]), p

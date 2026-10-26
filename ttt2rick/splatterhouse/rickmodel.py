@@ -24,8 +24,9 @@ STATES = {
 # groups that only show while the left arm grows back (Splatterhouse's limb regeneration)
 REGEN_GROUPS = {'L_arm_regen_geo'}
 
+# (0x32 half floats and 0x3d a packed 32-bit vector, kept raw: the wallet chain prop's; 0x10 bytes: Jennifer's colours)
 COMPONENT_DTYPE = {0x35: '>f4', 0x36: '>f4', 0x37: '>f4', 0x08: 'u1', 0x15: '>u2', 0x13: '>u2', 0x21: '>u4',
-                   0x32: '>f2', 0x3d: '>u4'}   # (the wallet chain prop's) half floats; a packed 32-bit vector, kept raw
+                   0x32: '>f2', 0x3d: '>u4', 0x10: 'u1'}
 
 
 def fmt_info(f):
