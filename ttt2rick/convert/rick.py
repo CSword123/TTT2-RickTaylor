@@ -68,13 +68,16 @@ BUCKLE, JEANS, BUCKLE_GAP = 'brawlerBelt', 'brawlerDickies', 4.0
 CHAIN_SHINE = 1.25
 # The chain that hangs from his right hip is a prop of its own (characters/props/xbox360/walletchain.nif, exported by
 # ttt2rick.splatterhouse.extract as walletchain.npz next to the states): rigid segments, one per node, about
-# CHAIN_STEP mm apart, which Splatterhouse's physics hangs from his belt. Here CHAIN_SEGMENTS of them hang still in a U
-# on his right side (side view: from CHAIN_ENDS, front and back belt loops (z, y), sagging to their length), clear of
-# the jeans by CHAIN_CLEAR (along their surface's normal), skinned as the jeans under them so they move with them.
-# The links are cut out of their texture's alpha (CHAIN_CUT) and drawn blended, as the hair.
+# CHAIN_STEP mm apart, which Splatterhouse's physics hangs from his belt. As on the official statue, it is clipped to
+# two belt loops on his right, the front one and the back one over the back pocket's outer edge (CHAIN_LOOPS: degrees
+# around his hips from straight ahead towards his right, about CHAIN_AXIS (x, z), at the belt's middle CHAIN_BELT_Y),
+# and droops in a U between them over the hip: CHAIN_SEGMENTS of them, still (no physics here), clear of the jeans by
+# CHAIN_CLEAR (along their surface's normal), skinned as the jeans under them so they move with them. A clasp ring
+# (CLASP: radius, wire radius) at each end goes round the belt. The links are cut out of their texture's alpha
+# (CHAIN_CUT) and drawn blended, as the hair.
 CHAIN_PROP, CHAIN_SEGMENTS, CHAIN_STEP = 'walletchain.npz', 6, 119.0
-CHAIN_ENDS = ((30.0, 1350.0), (-230.0, 1350.0))
-CHAIN_CLEAR, CHAIN_CUT = 2.0, 150
+CHAIN_LOOPS, CHAIN_AXIS, CHAIN_BELT_Y = (50.0, 140.0), (0.0, -110.0), 1300.0
+CHAIN_CLEAR, CHAIN_CUT, CLASP = 2.0, 150, (16.0, 3.0)
 SKIN_SHARING = {'rick_head_geo'}         # its texture is the neck's: graded the same, so the two share it
 MARDUK_SKIN = [0x10400B9D, 0x10400B97, 0x10400BA0]     # mar.nut: the arm, neck and leg skin colours
 # material templates: kind -> (entry name or key, mesh, polygon); the cloth is a costume part of Jun's (her model pack,
@@ -459,41 +462,86 @@ def clear_of(pos, cover, cover_tris, gap, reach=60.0, passes=3):
     return out
 
 
-RIGHT_OUT = np.array([[0.0, 0, 1], [0, 1, 0], [-1, 0, 0]])     # his right (-x) to +z
+def around(angle):
+    """A rotation taking the direction angle degrees from straight ahead (+z) towards his right (-x) to +z."""
+    a = np.radians(angle)
+    d = np.array([-np.sin(a), 0.0, np.cos(a)])
+    up = np.array([0.0, 1.0, 0.0])
+    return np.stack([np.cross(up, d), up, d])
 
 
-def hanging_chain(prop, cover, cover_tris):
-    """(positions, normals, uv, triangles) of the chain's segments hung in a U on his right side, clear of the
-    cover (the jeans)."""
-    (za, ya), (zb, yb) = CHAIN_ENDS
+def on_hips(cover, cover_tris, y, angle, gap):
+    """The point gap outside the cover's surface at height y, angle degrees round from straight ahead to his right."""
+    x0, z0 = CHAIN_AXIS
+    return in_front(np.array([[x0, y, z0]]), cover, cover_tris, gap, around(angle))[0]
+
+
+def clasp(centre, out, uv, segments=12, sides=6):
+    """(positions, uv, triangles) of a ring round the belt at centre: in the plane of out and the vertical."""
+    big, wire = CLASP
+    up = np.array([0.0, 1.0, 0.0])
+    side = np.cross(up, out)
+    pos, tris = [], []
+    for i in range(segments):
+        a = 2 * np.pi * i / segments
+        c = centre + big * (np.cos(a) * up + np.sin(a) * out)
+        radial = np.cos(a) * up + np.sin(a) * out
+        for j in range(sides):
+            b = 2 * np.pi * j / sides
+            pos.append(c + wire * (np.cos(b) * radial + np.sin(b) * side))
+    for i in range(segments):
+        for j in range(sides):
+            a, b = i * sides + j, i * sides + (j + 1) % sides
+            c, d = ((i + 1) % segments) * sides + j, ((i + 1) % segments) * sides + (j + 1) % sides
+            tris += [(a, c, b), (b, c, d)]
+    return np.array(pos), np.tile(uv, (len(pos), 1)), np.array(tris)
+
+
+def metal_uv(path):
+    """A uv on the brightest solid metal of the chain's (cut) colour map."""
+    img = np.asarray(Image.open(path).convert('RGBA')).astype(np.float32)
+    score = np.where(img[..., 3] > 0, img[..., :3].mean(-1), -1)
+    y, x = np.unravel_index(score.argmax(), score.shape)
+    return np.array([(x + 0.5) / img.shape[1], (y + 0.5) / img.shape[0]])
+
+
+def hanging_chain(prop, cover, cover_tris, uv_metal):
+    """(positions, normals, uv, triangles) of the chain's segments hung in a U on his right side between two belt
+    loops, clear of the cover (the jeans), with a clasp at each end."""
+    (fa, ba), y0 = CHAIN_LOOPS, CHAIN_BELT_Y
     length = CHAIN_SEGMENTS * CHAIN_STEP
-    t = np.linspace(0, 1, 401)
-    def curve(sag):
-        return np.stack([za + (zb - za) * t, ya + (yb - ya) * t - sag * np.sin(np.pi * t)], 1)
+    t = np.linspace(0, 1, 121)
+    def curve(sag):                       # its centre line, over the hips
+        return np.array([on_hips(cover, cover_tris, y0 - sag * np.sin(np.pi * u), fa + (ba - fa) * u,
+                                 18.0 + CHAIN_CLEAR) for u in t])
     lo, hi = 0.0, length
-    for _ in range(50):                              # the sag that gives the chain its length
+    for _ in range(24):                              # the sag that gives the chain its length
         sag = (lo + hi) / 2
-        c = curve(sag)
-        lo, hi = (sag, hi) if np.linalg.norm(np.diff(c, axis=0), axis=1).sum() < length else (lo, sag)
+        lo, hi = (sag, hi) if np.linalg.norm(np.diff(curve(sag), axis=0), axis=1).sum() < length else (lo, sag)
     c = curve(sag)
     run = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(c, axis=0), axis=1))])
-    zy = np.stack([np.interp(np.arange(CHAIN_SEGMENTS + 1) * CHAIN_STEP, run, c[:, k]) for k in range(2)], 1)
-    nodes = np.stack([np.full(len(zy), -100.0), zy[:, 1], zy[:, 0]], 1)
-    nodes = in_front(nodes, cover, cover_tris, 18.0 + CHAIN_CLEAR, RIGHT_OUT)       # its centre line on the jeans
+    nodes = np.stack([np.interp(np.arange(CHAIN_SEGMENTS + 1) * CHAIN_STEP, run, c[:, k]) for k in range(3)], 1)
     pos, uv, tris = [], [], []
+    def add(p, u, tr):
+        tris.append(tr + sum(len(q) for q in pos))
+        pos.append(p)
+        uv.append(u)
     for k in range(CHAIN_SEGMENTS):
         local = prop['seg%d_positions' % k].astype(np.float64)
         along = nodes[k + 1] - nodes[k]
         along /= np.linalg.norm(along)
-        out = np.array([-1.0, 0, 0]) - along * -along[0]
+        out = around(fa + (ba - fa) * (k + 0.5) / CHAIN_SEGMENTS)[2]
+        out = out - along * (out @ along)
         out /= np.linalg.norm(out)
         R = np.stack([out, -along, np.cross(out, -along)], 1)       # its local x out, its length (-y) along
-        p = local @ R.T + nodes[k]
-        tris.append(prop['seg%d_triangles' % k] + sum(len(q) for q in pos))
-        pos.append(p)
-        uv.append(prop['seg%d_uv' % k].astype(np.float64))
-    pos, tris = np.concatenate(pos), np.concatenate(tris)
-    pos = clear_of(pos, cover, cover_tris, CHAIN_CLEAR)
+        add(local @ R.T + nodes[k], prop['seg%d_uv' % k].astype(np.float64), prop['seg%d_triangles' % k])
+    pos_c = clear_of(np.concatenate(pos), cover, cover_tris, CHAIN_CLEAR)
+    pos = [pos_c]
+    for angle in (fa, ba):                           # the clasps, round the belt at the loops
+        surface = on_hips(cover, cover_tris, y0, angle, 0.0)
+        add(*clasp(surface, around(angle)[2], uv_metal))
+    tris = np.concatenate(tris)
+    pos = np.concatenate(pos)
     return pos, vertex_normals(pos, tris), np.concatenate(uv), tris
 
 
@@ -610,12 +658,13 @@ def convert(game, rick_dir, tex_dir, out):
     chain = next((m for m in info['meshes'] if m['name'] == BUCKLE), None)       # (its textures are the chain's)
     if os.path.exists(prop) and chain is not None and JEANS in mesh_names:
         cover = mesh_names.index(JEANS)
-        pos, nrm, uv, tris = hanging_chain(np.load(prop), posed[cover][0], data['mesh%d_triangles' % cover])
+        base = shiny(tex_dir, chain['textures'], os.path.join(out, 'chain_links.png'), cut=CHAIN_CUT)
+        pos, nrm, uv, tris = hanging_chain(np.load(prop), posed[cover][0], data['mesh%d_triangles' % cover],
+                                           metal_uv(base))
         # skinned as the jeans under it (their nearest vertex), so it moves with them in any pose
         jbones, jwts = skin_weights(cover)
         near = ((pos[:, None] - posed[cover][0][None]) ** 2).sum(-1).argmin(1)
         bones, wts = jbones[near], jwts[near]
-        base = shiny(tex_dir, chain['textures'], os.path.join(out, 'chain_links.png'), cut=CHAIN_CUT)
         poly = polygon(pos, nrm, uv, tris, bones, wts, material('overlay', base, chain['textures'].get('normal')))
         sph = nud.bounding_sphere(pos)
         meshes.append(dict(name='rick_walletChain', sphere=sph, center=sph[:3], sort_bias=0.0, zero=0,
@@ -623,8 +672,8 @@ def convert(game, rick_dir, tex_dir, out):
         preview.append(dict(name='walletChain', positions=pos, normals=nrm, uv=uv, triangles=tris,
                             textures={'base': base}))
         images[base] = np.asarray(Image.open(base).convert('RGBA'))
-        print('wallet chain: %d segments, down to %.0f mm below the belt, %d vertices' % (
-            CHAIN_SEGMENTS, max(y for _, y in CHAIN_ENDS) - pos[:, 1].min(), len(pos)))
+        print('wallet chain: %d segments and 2 clasps, down to %.0f mm below the belt loops, %d vertices' % (
+            CHAIN_SEGMENTS, CHAIN_BELT_Y - pos[:, 1].min(), len(pos)))
     allp = np.concatenate([p['verts']['pos'] for mm in meshes for p in mm['polys']])
     model = dict(version=0x0201, sphere=nud.bounding_sphere(allp), bone_first=None, meshes=meshes)
     textures = bank.textures()
