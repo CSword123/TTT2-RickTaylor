@@ -89,6 +89,11 @@ for S in 'LR':
 # Nina's foot, and Rick's stance turns his foot flat, so with the same aim her toes pointed 13.8 degrees up in game. Her
 # foot is aimed that much steeper (FOOT_SLOPE: hers minus Rick's), so his animations put her sole flat as his.
 FOOT_SLOPE = np.radians(33.7 - 19.9)
+# Her shoulder's twist joint (most of her upper arm's weight) is the shoulder joint's sibling, under the clavicle, not
+# its child: the repose turned her shoulder joint to the T-pose but left the twist joint, and the upper arm with it, in
+# her A-pose, 45 degrees under the arm bones (in game the upper arms sank into her torso unless raised). It takes the
+# shoulder joint's turn (FOLLOWS: joint -> the joint whose repose it takes).
+FOLLOWS = {'%s_shoulder_twist_jnt' % s: '%s_shoulder_jnt' % s for s in 'lr'}
 FOOT_JOINTS = ('l_foot_jnt', 'r_foot_jnt', 'l_navicular_jnt', 'r_navicular_jnt')
 
 
@@ -174,6 +179,8 @@ def convert(game, jen_dir, out):
             b += '_jen'
         aims.append(((j, c), (a, b)))
     D = rc.reposed(names, parents, P, dpos, info, data, aims, ROLL)
+    for j, like in FOLLOWS.items():
+        D[names.index(j)] = D[names.index(like)]
     P2 = np.array([rc._apply(D[j], P[j]) for j in range(len(names))])
     t7 = {'names': list(ANCHOR), 'parents': [-1] * len(ANCHOR),
           'world': np.array([np.vstack([np.hstack([np.eye(3), P2[names.index(r)][:, None]]), [0, 0, 0, 1]])
