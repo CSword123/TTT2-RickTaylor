@@ -70,11 +70,11 @@ CHAIN_SHINE = 1.25
 # ttt2rick.splatterhouse.extract as walletchain.npz next to the states): rigid segments, one per node, about
 # CHAIN_STEP mm apart, which Splatterhouse's physics hangs from his belt. Here CHAIN_SEGMENTS of them hang still in a U
 # on his right side (side view: from CHAIN_ENDS, front and back belt loops (z, y), sagging to their length), clear of
-# the jeans by CHAIN_CLEAR; skinned to the hips and, more the lower they hang, the right thigh (up to
-# CHAIN_THIGH). The links are cut out of their texture's alpha (CHAIN_CUT) and drawn blended, as the hair.
+# the jeans by CHAIN_CLEAR (along their surface's normal), skinned as the jeans under them so they move with them.
+# The links are cut out of their texture's alpha (CHAIN_CUT) and drawn blended, as the hair.
 CHAIN_PROP, CHAIN_SEGMENTS, CHAIN_STEP = 'walletchain.npz', 6, 119.0
 CHAIN_ENDS = ((30.0, 1350.0), (-230.0, 1350.0))
-CHAIN_CLEAR, CHAIN_THIGH, CHAIN_CUT = 2.0, 0.6, 150
+CHAIN_CLEAR, CHAIN_CUT = 2.0, 150
 SKIN_SHARING = {'rick_head_geo'}         # its texture is the neck's: graded the same, so the two share it
 MARDUK_SKIN = [0x10400B9D, 0x10400B97, 0x10400BA0]     # mar.nut: the arm, neck and leg skin colours
 # material templates: kind -> (entry name or key, mesh, polygon); the cloth is a costume part of Jun's (her model pack,
@@ -445,12 +445,26 @@ def vertex_normals(pos, tris):
     return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
 
 
+def clear_of(pos, cover, cover_tris, gap, reach=60.0, passes=3):
+    """pos with each vertex nearer than gap to the cover's surface (by its nearest cover vertex within reach, along
+    that vertex's normal) moved out to gap."""
+    n = vertex_normals(cover, cover_tris)
+    out = pos.copy()
+    for _ in range(passes):
+        d2 = ((out[:, None] - cover[None]) ** 2).sum(-1)
+        near = d2.argmin(1)
+        s = ((out - cover[near]) * n[near]).sum(1)
+        push = np.where((np.sqrt(d2[np.arange(len(out)), near]) < reach) & (s < gap), gap - s, 0.0)
+        out += push[:, None] * n[near]
+    return out
+
+
 RIGHT_OUT = np.array([[0.0, 0, 1], [0, 1, 0], [-1, 0, 0]])     # his right (-x) to +z
 
 
 def hanging_chain(prop, cover, cover_tris):
-    """(positions, normals, uv, triangles, how low each vertex hangs (0 at the belt, 1 at the bottom)) of the
-    chain's segments hung in a U on his right side, clear of the cover (the jeans)."""
+    """(positions, normals, uv, triangles) of the chain's segments hung in a U on his right side, clear of the
+    cover (the jeans)."""
     (za, ya), (zb, yb) = CHAIN_ENDS
     length = CHAIN_SEGMENTS * CHAIN_STEP
     t = np.linspace(0, 1, 401)
@@ -479,9 +493,8 @@ def hanging_chain(prop, cover, cover_tris):
         pos.append(p)
         uv.append(prop['seg%d_uv' % k].astype(np.float64))
     pos, tris = np.concatenate(pos), np.concatenate(tris)
-    pos = in_front(pos, cover, cover_tris, CHAIN_CLEAR, RIGHT_OUT)
-    low = np.clip((max(ya, yb) - pos[:, 1]) / sag, 0, 1)
-    return pos, vertex_normals(pos, tris), np.concatenate(uv), tris, low
+    pos = clear_of(pos, cover, cover_tris, CHAIN_CLEAR)
+    return pos, vertex_normals(pos, tris), np.concatenate(uv), tris
 
 
 def polygon(pos, nrm, uv, tris, bones, wts, mat):
@@ -549,6 +562,21 @@ def convert(game, rick_dir, tex_dir, out):
             t['wrap_s'] = t['wrap_t'] = 1        # repeat (Splatterhouse UVs run past 0..1)
         return mat
 
+    def skin_weights(k):
+        """Mesh k's TTT2 bones and weights per vertex (its four heaviest, normalized)."""
+        tj, tw = jmap[data['mesh%d_joints' % k]], data['mesh%d_weights' % k]
+        bones, wts = np.zeros((len(tj), 4), np.uint32), np.zeros((len(tj), 4), np.float32)
+        for v in range(len(tj)):
+            acc = {}
+            for j, w in zip(tj[v], tw[v]):
+                if w > 0:
+                    acc[int(j)] = acc.get(int(j), 0.0) + float(w)
+            top = sorted(acc.items(), key=lambda x: -x[1])[:4]
+            s = sum(w for _, w in top)
+            for q in range(4):
+                bones[v, q], wts[v, q] = (top[q][0], top[q][1] / s) if q < len(top) else (top[0][0], 0.0)
+        return bones, wts
+
     meshes, preview, images = [], [], {}
     posed = [skin(D, data['mesh%d_positions' % k].astype(np.float64), data['mesh%d_normals' % k].astype(np.float64),
                   data['mesh%d_joints' % k], data['mesh%d_weights' % k].astype(np.float64))
@@ -561,17 +589,7 @@ def convert(game, rick_dir, tex_dir, out):
             pos = in_front(pos, posed[cover][0], data['mesh%d_triangles' % cover], BUCKLE_GAP)
         uv = data['mesh%d_uv' % k].astype(np.float64)
         tris = data['mesh%d_triangles' % k]
-        tj, tw = jmap[data['mesh%d_joints' % k]], data['mesh%d_weights' % k]
-        bones, wts = np.zeros((len(pos), 4), np.uint32), np.zeros((len(pos), 4), np.float32)
-        for v in range(len(pos)):
-            acc = {}
-            for j, w in zip(tj[v], tw[v]):
-                if w > 0:
-                    acc[int(j)] = acc.get(int(j), 0.0) + float(w)
-            top = sorted(acc.items(), key=lambda x: -x[1])[:4]
-            s = sum(w for _, w in top)
-            for q in range(4):
-                bones[v, q], wts[v, q] = (top[q][0], top[q][1] / s) if q < len(top) else (top[0][0], 0.0)
+        bones, wts = skin_weights(k)
         kind = 'overlay' if m['name'] in OVERLAY_MESHES else 'glow' if m['name'] in GLOW_MESHES \
             else 'skin' if m['textures']['base'] == SKIN_TEXTURE or m['name'] in SKIN_MESHES \
             else 'cloth'
@@ -592,12 +610,11 @@ def convert(game, rick_dir, tex_dir, out):
     chain = next((m for m in info['meshes'] if m['name'] == BUCKLE), None)       # (its textures are the chain's)
     if os.path.exists(prop) and chain is not None and JEANS in mesh_names:
         cover = mesh_names.index(JEANS)
-        pos, nrm, uv, tris, low = hanging_chain(np.load(prop), posed[cover][0], data['mesh%d_triangles' % cover])
-        thigh = (low * CHAIN_THIGH).astype(np.float32)
-        bones = np.zeros((len(pos), 4), np.uint32)
-        bones[:, 0], bones[:, 1:] = bidx['KOSHI_jnt'], bidx['MOMO_R_jnt']
-        wts = np.zeros((len(pos), 4), np.float32)
-        wts[:, 0], wts[:, 1] = 1 - thigh, thigh
+        pos, nrm, uv, tris = hanging_chain(np.load(prop), posed[cover][0], data['mesh%d_triangles' % cover])
+        # skinned as the jeans under it (their nearest vertex), so it moves with them in any pose
+        jbones, jwts = skin_weights(cover)
+        near = ((pos[:, None] - posed[cover][0][None]) ** 2).sum(-1).argmin(1)
+        bones, wts = jbones[near], jwts[near]
         base = shiny(tex_dir, chain['textures'], os.path.join(out, 'chain_links.png'), cut=CHAIN_CUT)
         poly = polygon(pos, nrm, uv, tris, bones, wts, material('overlay', base, chain['textures'].get('normal')))
         sph = nud.bounding_sphere(pos)
