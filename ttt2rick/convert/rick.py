@@ -155,11 +155,13 @@ def _apply(M, p):
     return M[:3, :3] @ p + M[:3, 3]
 
 
-def repose(names, parents, P, donor_pos):
-    """Per-joint world deltas (n, 4, 4) taking Rick's bind pose to the donor's limb directions."""
+def repose(names, parents, P, donor_pos, aims=None, rolls=None):
+    """Per-joint world deltas (n, 4, 4) taking Rick's bind pose to the donor's limb directions (aims, rolls: another
+    fighter's AIM and ROLL)."""
     idx = {n: i for i, n in enumerate(names)}
-    aim = {idx[j]: (idx[c], donor_pos[b] - donor_pos[a]) for (j, c), (a, b) in AIM}
-    roll = {idx[j]: (idx[x], idx[y], donor_pos[b] - donor_pos[a]) for j, ((x, y), (a, b)) in ROLL.items()}
+    aim = {idx[j]: (idx[c], donor_pos[b] - donor_pos[a]) for (j, c), (a, b) in (AIM if aims is None else aims)}
+    roll = {idx[j]: (idx[x], idx[y], donor_pos[b] - donor_pos[a])
+            for j, ((x, y), (a, b)) in (ROLL if rolls is None else rolls).items()}
     D = np.zeros((len(names), 4, 4))
     for j in range(len(names)):
         if parents[j] >= j:
@@ -178,10 +180,10 @@ def repose(names, parents, P, donor_pos):
     return D
 
 
-def reposed(names, parents, P, donor_pos, info, data):
+def reposed(names, parents, P, donor_pos, info, data, aims=None, rolls=None):
     """repose's deltas, then lifted: straightened legs reach lower than the bent ones did, so the soles are stood on
     the floor (y = 0) again. These take Rick's bind mesh to the TTT2 one (ttt2rick.convert.idle undoes them)."""
-    D = repose(names, parents, P, donor_pos)
+    D = repose(names, parents, P, donor_pos, aims, rolls)
     floor = min(skin(D, data['mesh%d_positions' % k].astype(np.float64), data['mesh%d_normals' % k].astype(
         np.float64), data['mesh%d_joints' % k], data['mesh%d_weights' % k].astype(np.float64))[0][:, 1].min()
         for k in range(len(info['meshes'])))
@@ -190,14 +192,14 @@ def reposed(names, parents, P, donor_pos, info, data):
     return lift @ D
 
 
-def foot_heights(skel, names, P):
+def foot_heights(skel, names, P, joints=('L_ankle_jnt', 'R_ankle_jnt', 'L_ballFoot_jnt', 'R_ballFoot_jnt')):
     """The skeleton's parameters 1-4: the ankles' and toes' heights over the soles (L, R, L, R), in units the game
     multiplies by the skeleton's scale. Every title skeleton has its ASHI / TSUMASAKI joints at about these times its
     scale (some a few mm lower: shoe soles), so they are where the game puts the feet on the floor. They are taken
     with his feet flat, in his own bind pose (P, soles at y = 0), as his stance and guard keep them
     (ttt2rick.convert.idle): the T-pose's feet are aimed down like the donor's, which lifts the ankles off the floor."""
     params = list(skel['params'])
-    for k, j in enumerate(('L_ankle_jnt', 'R_ankle_jnt', 'L_ballFoot_jnt', 'R_ballFoot_jnt')):
+    for k, j in enumerate(joints):
         params[1 + k] = round(float(P[names.index(j)][1] / skel['scale']), 1)
     skel['params'] = params
 

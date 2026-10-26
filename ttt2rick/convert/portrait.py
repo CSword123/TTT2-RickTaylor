@@ -27,6 +27,7 @@ from PIL import Image, ImageFilter
 from ..ttt2 import xbox
 from ..ttt2.archive import Archives
 from ..ttt2.petexy import nut
+from . import picture as picture_file
 from .clean import clean_picture
 
 CONTAINER = 0x6CCDFC60
@@ -128,7 +129,7 @@ def compose(med, frame, inside, picture, mirror):
 def main(game, picture, out):
     arc = Archives(game)
     P = portraits(arc)
-    bloody = Image.open(picture).convert('RGBA')
+    bloody = picture_file.load(picture)
     folder = os.path.join(game, 'game') if os.path.isdir(os.path.join(game, 'game')) else game
     image = open(os.path.join(folder, 'tekken.img'), 'rb').read()
     G = green_portraits(arc, image)

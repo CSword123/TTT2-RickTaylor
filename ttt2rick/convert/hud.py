@@ -21,6 +21,7 @@ from PIL import Image, ImageFilter
 from ..ttt2 import xbox
 from ..ttt2.archive import Archives
 from ..ttt2.petexy import nut
+from . import picture as picture_file
 
 CONTAINER = 0x7C476BDE
 HUD_NUMBERS = 0x82DDD2F0        # in the game image
@@ -107,7 +108,7 @@ def main(game, picture, out):
     if len(textures) != RICK_NUMBERS[0]:
         raise ValueError('the HUD container has %d textures, not %d' % (len(textures), RICK_NUMBERS[0]))
     name = name_texture(textures)
-    face = face_texture(Image.open(picture).convert('RGBA'))
+    face = face_texture(picture_file.load(picture))
     os.makedirs(out, exist_ok=True)
     Image.fromarray(name).save(os.path.join(out, 'hud_name.png'))
     Image.fromarray(face).save(os.path.join(out, 'hud_face.png'))

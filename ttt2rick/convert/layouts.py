@@ -23,6 +23,7 @@ from PIL import Image
 from ..ttt2 import xbox
 from ..ttt2.archive import Archives
 from ..ttt2.petexy import art, lmb
+from . import picture as picture_file
 
 CODE, NAME = 'ric', 'RICK'
 LAYOUTS = 'data007.bin'
@@ -39,7 +40,7 @@ class Sources:
     """Rick's picture with where his face is, as ttt2rick.ttt2.petexy.art.Layout asks for it."""
 
     def __init__(self, picture, letters=None):
-        self.picture = art._float(Image.open(picture).convert('RGBA'))
+        self.picture = art._float(picture_file.load(picture))
         self.letters = letters
 
     def framed(self, place, w, h, mirror=False):
