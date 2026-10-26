@@ -1,17 +1,23 @@
-// Rick Taylor as an added fighter of his own (TTT2-RickTaylor project; design after Petexy's Wii U port, whose
-// runtime/src/title/roster.cpp does this for its character packs). TTT2_RICK=1 turns it on.
+// The added fighters, each with a roster slot of its own: Rick Taylor and Jennifer Willis (TTT2-RickTaylor project;
+// design after Petexy's Wii U port, whose runtime/src/title/roster.cpp does this for its character packs).
+// TTT2_RICK=1 turns them on (TTT2_JEN=0 leaves Jennifer out).
 //
-// Rick is internal id 64 (the title's ids end at 62; 63 means random/none), records 140 and 141 (copies of
-// Marduk's, held here), motion row 57 (a row no record uses) and code "ric": his body files ric.nud/.nut/.bon/.xml
-// come from the title update's overlay (ttt2rick.ttt2.overlay), his moveset is Marduk's under a key of its own and
-// his motion pack Marduk's with his own stance (ttt2rick.convert.idle).
+// Each added fighter (kFighters) has an internal id from 64 on (the title's ids end at 62; 63 means random/none), two
+// records from 140 on (copies of Marduk's, held here), a motion row no record uses, a code and a select grid cell in
+// the top row, right of Violet's. Its body files <code>.nud/.nut/.bon/.xml come from the title update's overlay
+// (ttt2rick.ttt2.overlay), its moveset is Marduk's under a key of its own (Rick's attacks, ttt2rick.convert.slot;
+// Jennifer's is Rick's with her id, ttt2jen.slot) and its motion pack Marduk's with its own stance
+// (ttt2rick.convert.idle; Jennifer's: ttt2jen.motions). Everything else of the title's that is by fighter is
+// Marduk's for them (his records' fields, his UI row with their own pictures lent to it, his voice, his save entries).
 // Addresses: recomp/ROSTER.md.
 #include "kernel_shared.h"
 #include "guest_heap.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
 #include <set>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -40,18 +46,43 @@ extern "C" PPC_FUNC(__imp__sub_82276440);   // motion row -> record
 extern "C" PPC_FUNC(__imp__sub_82331B50);   // a player's fighter from a record: loadPlayer ... <code>
 
 namespace {
-constexpr uint32_t kId = 64, kRecord0 = 140, kRow = 57, kDonorId = 17, kDonorRecord0 = 36, kDonorRow = 17;
+constexpr uint32_t kDonorId = 17, kDonorRecord0 = 36, kDonorRow = 17;
 constexpr uint32_t kRecords = 0x82DC21B8, kRecordSize = 84, kTitleRecords = 139;
 constexpr uint32_t kMotionRows = 0x820A24B0;            // 68 x {motion pack, moveset, move list} (sub_82590690)
 constexpr uint32_t kCodes = 0x82DD1CC8;                  // 63 x char*, by internal id
 constexpr uint32_t kGrids = 0x8200C8BC;                  // {cells, count} by mode
 constexpr uint32_t kRegistryPtr = 0x82EE0B5C;
-constexpr uint32_t kMovesetKey = 0x52494331;             // "RIC1": Marduk's moveset with Rick's id, from the overlay
-constexpr uint32_t kRickMotions = 0x52494332;            // "RIC2": Marduk's motion pack with Rick's stance
-constexpr uint32_t kJenMotions = 0x4A454E32;             // "JEN2": RIC2 with Jennifer's feet planted (ttt2jen.motions)
 constexpr uint32_t kDonorMoveList = 0x68A7CEF7;
+constexpr uint32_t kTitleCells = 62;                     // the full grids' (modes 1 and 2) own cells
 
-// Marduk's registry entries (sub_8244E618), replayed for "ric" with his own body files' keys.
+struct Fighter
+{
+    const char* code;
+    const char* name;
+    uint32_t id, record0, row;
+    uint32_t motions, moveset;      // their keys ("RIC2" / "RIC1"): the motion row's first two
+    const char* nud; const char* nut; const char* nutBlood; const char* bon; const char* xml;
+    const char* mop;                // its skeleton's spring-bone file (registry type 3), or nullptr: Marduk's
+    uint32_t portraitFrame;         // its first frame in the select portraits' container (ttt2rick.convert.portrait)
+    uint32_t hud[3];                // its HUD numbers: name, face 1p, face 2p (ttt2rick.convert.hud)
+    int32_t column;                 // its grid cell's column in the top row
+    // at run time
+    bool on;
+    uint32_t records, codeAddr;
+    int32_t cell;
+    uint32_t frames[2];             // its select portraits (guest addresses), when the lister has them
+};
+
+// Rick: Marduk's moveset with Splatterhouse's attacks, his body on Marduk's skeleton. Jennifer: Rick's moveset and
+// motions (her feet planted), her body on Nina's skeleton (with Nina's spring-bone file for the bust's OPT bone).
+Fighter kFighters[] = {
+    { "ric", "Rick", 64, 140, 57, 0x52494332, 0x52494331, "ric.nud", "ric.nut", "ric_blood.nut", "ric.bon", "ric.xml",
+      nullptr, 118, { 259, 260, 261 }, 19 },
+    { "jen", "Jennifer", 65, 142, 58, 0x4A454E32, 0x4A454E31, "jen.nud", "jen.nut", nullptr, "jen.bon", "jen.xml",
+      "nin.mop", 122, { 262, 263, 264 }, 20 },
+};
+
+// Marduk's registry entries (sub_8244E618), replayed for an added fighter's code with its own body files' keys.
 enum class Op { Code, File, Part };
 struct Reg { Op op; uint32_t type, key, index; };
 constexpr Reg kDonorRegistry[] = {
@@ -71,9 +102,15 @@ constexpr Reg kDonorRegistry[] = {
     {Op::Part, 14, 0x4461DF60, 18}, {Op::Part, 14, 0x7901F6D0, 19},
 };
 
+bool Env(const char* name, bool otherwise)
+{
+    const char* e = std::getenv(name);
+    return e && *e ? *e == '1' : otherwise;
+}
+
 bool On()
 {
-    static const bool on = [] { const char* e = std::getenv("TTT2_RICK"); return e && *e == '1'; }();
+    static const bool on = Env("TTT2_RICK", false);
     return on;
 }
 
@@ -81,15 +118,13 @@ bool On()
 // picture's (ttt2rick.convert.clean takes it off by default).
 bool Bloody()
 {
-    static const bool on = [] { const char* e = std::getenv("TTT2_RICK_BLOOD"); return e && *e == '1'; }();
+    static const bool on = Env("TTT2_RICK_BLOOD", false);
     return on;
 }
 
-// TTT2_JEN=1 (with TTT2_RICK=1): Rick's slot gets Jennifer's body (jen.nud/.nut/.bon/.xml, ttt2jen.convert) and her
-// motion pack (JEN2), keeping his moves, name and portraits: a way to play her until she has a slot of her own.
-bool Jen()
+bool Traced()
 {
-    static const bool on = [] { const char* e = std::getenv("TTT2_JEN"); return e && *e == '1'; }();
+    static const bool on = std::getenv("TTT2_RICK_TRACE") != nullptr;
     return on;
 }
 
@@ -104,17 +139,38 @@ uint32_t Crc(const char* s)                              // the archives' keys: 
     return ~c;
 }
 
-uint8_t* g_mem = nullptr;
-uint32_t Guest(const void* p) { return uint32_t(static_cast<const uint8_t*>(p) - g_mem); }
-
 struct State
 {
-    uint32_t records = 0;           // our two records
-    uint32_t code = 0;              // "ric\0"
     uint32_t scratch = 0;           // string objects and keys for the guest calls
-    uint32_t labels = 0;            // 4 x 128 bytes: label names with Rick's code (sub_82B62BE8)
+    uint32_t labels = 0;            // 4 x 128 bytes: label names with an added fighter's code (sub_82B62BE8)
     bool ready = false, registered = false;
 } g;
+
+Fighter* ById(uint32_t id)
+{
+    if (!(On() && g.ready)) return nullptr;
+    for (Fighter& f : kFighters)
+        if (f.on && f.id == id) return &f;
+    return nullptr;
+}
+
+Fighter* ByRecord(uint32_t record)
+{
+    if (!(On() && g.ready)) return nullptr;
+    for (Fighter& f : kFighters)
+        if (f.on && (record == f.record0 || record == f.record0 + 1)) return &f;
+    return nullptr;
+}
+
+Fighter* ByRow(uint32_t row)
+{
+    if (!(On() && g.ready)) return nullptr;
+    for (Fighter& f : kFighters)
+        if (f.on && f.row == row) return &f;
+    return nullptr;
+}
+
+uint32_t RecordAddr(const Fighter& f, uint32_t record) { return f.records + (record - f.record0) * kRecordSize; }
 
 uint32_t Alloc(uint8_t* base, uint32_t size)
 {
@@ -135,91 +191,109 @@ void Call(PPCContext& ctx, uint8_t* base, void (*fn)(PPCContext&, uint8_t*), std
     ctx.r3.u64 = r3;
 }
 
-// One-time set-up: the records, the motion row and the grids.
+// One-time set-up: the records, the motion rows and the grids.
 void Prepare(uint8_t* base)
 {
     if (g.ready) return;
     g.ready = true;
-    g_mem = base;
-    g.records = Alloc(base, 2 * kRecordSize);
-    for (uint32_t k = 0; k < 2; ++k)
+    kFighters[0].on = true;
+    kFighters[1].on = Env("TTT2_JEN", true);
+    for (Fighter& f : kFighters)
     {
-        const uint32_t r = g.records + k * kRecordSize;
-        std::memcpy(base + r, base + kRecords + (kDonorRecord0 + k) * kRecordSize, kRecordSize);
-        GWrite32(base, r + 0, kId);
-        GWrite32(base, r + 12, kRow);
+        if (!f.on) continue;
+        f.records = Alloc(base, 2 * kRecordSize);
+        for (uint32_t k = 0; k < 2; ++k)
+        {
+            const uint32_t r = f.records + k * kRecordSize;
+            std::memcpy(base + r, base + kRecords + (kDonorRecord0 + k) * kRecordSize, kRecordSize);
+            GWrite32(base, r + 0, f.id);
+            GWrite32(base, r + 12, f.row);
+        }
+        f.codeAddr = Alloc(base, 16);
+        std::memcpy(base + f.codeAddr, f.code, std::strlen(f.code) + 1);
+        const uint32_t row = kMotionRows + 12 * f.row;
+        GWrite32(base, row + 0, f.motions);
+        GWrite32(base, row + 4, f.moveset);
+        GWrite32(base, row + 8, kDonorMoveList);
     }
-    g.code = Alloc(base, 16);
-    std::memcpy(base + g.code, "ric", 4);
     g.scratch = Alloc(base, 1024);
     g.labels = Alloc(base, 4 * 128);
 
-    if (kRow != 17)                          // a row of his own (not while he shares Marduk's)
-    {
-        const uint32_t row = kMotionRows + 12 * kRow;
-        GWrite32(base, row + 0, Jen() ? kJenMotions : kRickMotions);
-        GWrite32(base, row + 4, kMovesetKey);
-        GWrite32(base, row + 8, kDonorMoveList);
-    }
-
-    // The full grids (modes 1 and 2: 62 cells, the top row columns 3-18) get a 63rd cell: Rick at column 19 of
-    // the top row, in the row's ring (right of cell 61, left of 46) and above the middle row's column 19 (cell 19).
+    // The full grids (modes 1 and 2: 62 cells, the top row columns 3-18) get a cell per added fighter: at its column
+    // of the top row (19, 20: right of Violet's), in the row's ring (between cell 61 and cell 46) and above the
+    // middle row's cell of its column (cell = column), below the bottom row's (cell 23 + column).
+    Fighter* on[std::size(kFighters)];
+    uint32_t n = 0;
+    for (Fighter& f : kFighters)
+        if (f.on) on[n++] = &f;
     for (uint32_t mode = 1; mode <= 2; ++mode)
     {
         const uint32_t entry = kGrids + 8 * mode, cells = GRead32(base, entry), count = GRead32(base, entry + 4);
-        if (count != 62) continue;
-        const uint32_t copy = Alloc(base, 32 * 63);
-        std::memcpy(base + copy, base + cells, 32 * 62);
-        const uint32_t rick = copy + 32 * 62;
-        const int32_t fields[8] = { int32_t(kId), 51, 42, 19, 61, 46, 19, 0 };   // id, 51, up, down, left, right, column, row
-        for (int i = 0; i < 8; ++i) GWrite32(base, rick + 4 * i, uint32_t(fields[i]));
-        GWrite32(base, copy + 32 * 61 + 20, 62);    // cell 61's right
-        GWrite32(base, copy + 32 * 46 + 16, 62);    // cell 46's left
-        GWrite32(base, copy + 32 * 19 + 8, 62);     // the middle row's column 19: up
-        GWrite32(base, copy + 32 * 42 + 12, 62);    // the bottom row's column 19: down
+        if (count != kTitleCells) continue;
+        const uint32_t copy = Alloc(base, 32 * (kTitleCells + n));
+        std::memcpy(base + copy, base + cells, 32 * kTitleCells);
+        for (uint32_t k = 0; k < n; ++k)
+        {
+            const int32_t cell = int32_t(kTitleCells + k), col = on[k]->column;
+            const int32_t left = k ? cell - 1 : 61, right = k + 1 < n ? cell + 1 : 46;
+            const int32_t fields[8] = { int32_t(on[k]->id), 51, 23 + col, col, left, right, col, 0 };
+            for (int i = 0; i < 8; ++i) GWrite32(base, copy + 32 * cell + 4 * i, uint32_t(fields[i]));
+            GWrite32(base, copy + 32 * col + 8, uint32_t(cell));           // the middle row's: up
+            GWrite32(base, copy + 32 * (23 + col) + 12, uint32_t(cell));    // the bottom row's: down
+            on[k]->cell = cell;
+        }
+        if (n)
+        {
+            GWrite32(base, copy + 32 * 61 + 20, kTitleCells);               // cell 61's right
+            GWrite32(base, copy + 32 * 46 + 16, kTitleCells + n - 1);       // cell 46's left
+        }
         GWrite32(base, entry, copy);
-        GWrite32(base, entry + 4, 63);
+        GWrite32(base, entry + 4, kTitleCells + n);
     }
-    std::fprintf(stderr, "[rick] records %08X, motion row %u, code 'ric' (id %u)\n", g.records, kRow, kId);
+    for (const Fighter& f : kFighters)
+        if (f.on)
+            std::fprintf(stderr, "[added] %s: id %u, records %u/%u at %08X, motion row %u, code '%s', cell %d\n",
+                         f.name, f.id, f.record0, f.record0 + 1, f.records, f.row, f.code, f.cell);
 }
 
 void Register(PPCContext& ctx, uint8_t* base, uint32_t master)
 {
     Prepare(base);
     const uint32_t s = g.scratch;
-    const uint32_t name = s, code = s + 128, text = s + 256, key = s + 288;
-    // the chara master: {id, motion row, name, code}
-    std::memcpy(base + text, "Rick", 5);
-    Call(ctx, base, sub_823011F8, { name, text });
-    Call(ctx, base, sub_823011F8, { code, g.code });
-    Call(ctx, base, sub_8247C480, { master, kId, kRow, name, code });
-    if (g.registered) return;
-    g.registered = true;
-    // the key registry: Marduk's entries, with Rick's own body files
+    const uint32_t name = s, code = s + 128, text = s + 256, key = s + 288, regCode = s + 384;
     const uint32_t registry = GRead32(base, kRegistryPtr);
-    const uint32_t regCode = s + 384;
-    Call(ctx, base, sub_82429C58, { regCode, g.code });
-    for (const Reg& r : kDonorRegistry)
+    const bool first = !g.registered;
+    g.registered = true;
+    for (const Fighter& f : kFighters)
     {
-        uint32_t k = r.key;
-        if (r.op == Op::File && r.type == 0) k = Crc(Jen() ? "jen.nud" : "ric.nud");
-        if (r.op == Op::File && r.type == 1) k = Crc(Jen() ? "jen.nut" : Bloody() ? "ric_blood.nut" : "ric.nut");
-        if (r.op == Op::File && r.type == 2) k = Crc(Jen() ? "jen.bon" : "ric.bon");
-        if (r.op == Op::File && r.type == 6) k = Crc(Jen() ? "jen.xml" : "ric.xml");
-        GWrite32(base, key, k);
-        if (r.op == Op::Code) Call(ctx, base, sub_8247DDB0, { registry, regCode });
-        else if (r.op == Op::File) Call(ctx, base, sub_8247A628, { registry, regCode, r.type, key });
-        else Call(ctx, base, sub_82472220, { registry, regCode, r.type, key, r.index });
+        if (!f.on) continue;
+        // the chara master: {id, motion row, name, code}
+        std::memcpy(base + text, f.name, std::strlen(f.name) + 1);
+        Call(ctx, base, sub_823011F8, { name, text });
+        Call(ctx, base, sub_823011F8, { code, f.codeAddr });
+        Call(ctx, base, sub_8247C480, { master, f.id, f.row, name, code });
+        if (!first) continue;
+        // the key registry: Marduk's entries, with the fighter's own body files
+        Call(ctx, base, sub_82429C58, { regCode, f.codeAddr });
+        for (const Reg& r : kDonorRegistry)
+        {
+            uint32_t k = r.key;
+            if (r.op == Op::File && r.type == 0) k = Crc(f.nud);
+            if (r.op == Op::File && r.type == 1) k = Crc(Bloody() && f.nutBlood ? f.nutBlood : f.nut);
+            if (r.op == Op::File && r.type == 2) k = Crc(f.bon);
+            if (r.op == Op::File && r.type == 3 && f.mop) k = Crc(f.mop);
+            if (r.op == Op::File && r.type == 6) k = Crc(f.xml);
+            GWrite32(base, key, k);
+            if (r.op == Op::Code) Call(ctx, base, sub_8247DDB0, { registry, regCode });
+            else if (r.op == Op::File) Call(ctx, base, sub_8247A628, { registry, regCode, r.type, key });
+            else Call(ctx, base, sub_82472220, { registry, regCode, r.type, key, r.index });
+        }
+        Call(ctx, base, sub_82336FC0, { regCode, 0 });
+        std::fprintf(stderr, "[added] registered '%s' (registry %08X, chara master %08X)\n", f.code, registry, master);
     }
-    Call(ctx, base, sub_82336FC0, { regCode, 0 });
-    std::fprintf(stderr, "[rick] registered 'ric' (registry %08X, chara master %08X)%s\n", registry, master,
-                 Jen() ? ": Jennifer's body and motions (TTT2_JEN=1)" : "");
 }
 
-bool Ours(uint32_t record) { return On() && g.ready && (record == kRecord0 || record == kRecord0 + 1); }
-uint32_t RecordAddr(uint32_t record) { return g.records + (record - kRecord0) * kRecordSize; }
-
-// The loader's stand-in (see sub_82331B50): Rick's records answer Marduk's id while it reads the code table.
+// The loader's stand-in (see sub_82331B50): an added fighter's records answer Marduk's id while it reads the code table.
 int g_proxy = 0;
 } // namespace
 
@@ -240,13 +314,19 @@ PPC_FUNC(sub_8246A054)
 void LogOddRecord(const char* fn, uint32_t record, uint32_t lr)
 {
     static uint32_t logged = 0;
-    if (On() && record >= kTitleRecords && !(record == kRecord0 || record == kRecord0 + 1) && logged++ < 40)
-        std::fprintf(stderr, "[rick] %s(record %u) out of range, lr %08X\n", fn, record, lr);
+    if (On() && record >= kTitleRecords && !ByRecord(record) && logged++ < 40)
+        std::fprintf(stderr, "[added] %s(record %u) out of range, lr %08X\n", fn, record, lr);
 }
 #define RECORD_FIELD(addr, value)                                                                                \
     PPC_FUNC(sub_##addr)                                                                                         \
     {                                                                                                            \
-        if (Ours(ctx.r3.u32)) { const uint32_t r = RecordAddr(ctx.r3.u32); (void)r; ctx.r3.u64 = (value); return; } \
+        if (const Fighter* f = ByRecord(ctx.r3.u32))                                                             \
+        {                                                                                                        \
+            const uint32_t r = RecordAddr(*f, ctx.r3.u32);                                                       \
+            (void)r;                                                                                             \
+            ctx.r3.u64 = (value);                                                                                \
+            return;                                                                                              \
+        }                                                                                                        \
         LogOddRecord(#addr, ctx.r3.u32, uint32_t(ctx.lr));                                                       \
         __imp__sub_##addr(ctx, base);                                                                            \
     }
@@ -257,23 +337,23 @@ RECORD_FIELD(82276310, GRead32(base, r + 12))
 RECORD_FIELD(82276408, GRead32(base, r + 80))
 #undef RECORD_FIELD
 
-// Rick has Marduk's UI row (the row of every table of the 2D screens and the HUD). The screens ask a member's row
-// (sub_82276348 by id, sub_82276380 by record) and then use that row's entries; until the next question, the
-// entries of Marduk's row that Rick has his own of are his:
+// The added fighters have Marduk's UI row (the row of every table of the 2D screens and the HUD). The screens ask a
+// member's row (sub_82276348 by id, sub_82276380 by record) and then use that row's entries; until the next question,
+// the entries of Marduk's row that the fighter asked about has its own of are its own:
 // - the fights' HUD (sub_823D55A8 faces, sub_823D6738 names) takes its pictures' numbers from a table by row
 //   (0x82DDD2F0: {name, face 1p, face 2p}) to sub_823D11B8 (HUD container 7C476BDE = resource 176): Marduk's
-//   numbers become Rick's own, appended to the container by ttt2rick.convert.hud;
+//   numbers become the fighter's own, appended to the container by ttt2rick.convert.hud;
 // - the 2D layouts' per-fighter labels (chara_face_mar, p1_chara_waku_mar, ...), whatever table they come from,
-//   reach sub_82B62BE8 (a sprite's jump to a label by name): Marduk's become Rick's (chara_face_ric, ...), which
-//   ttt2rick.convert.layouts adds to every layout that has Marduk's.
+//   reach sub_82B62BE8 (a sprite's jump to a label by name): Marduk's become the fighter's (chara_face_ric,
+//   chara_face_jen, ...), which ttt2rick.convert.layouts adds to every layout that has Marduk's.
 namespace {
-constexpr uint32_t kHudResource = 176, kHudDonor[3] = { 48, 123, 182 }, kHudRick[3] = { 259, 260, 261 };
-bool g_askedRick = false;
+constexpr uint32_t kHudResource = 176, kHudDonor[3] = { 48, 123, 182 };
+const Fighter* g_asked = nullptr;
 }
 PPC_FUNC(sub_82276380)                      // record -> +8 UI row
 {
-    g_askedRick = Ours(ctx.r3.u32);
-    if (g_askedRick) { ctx.r3.u64 = GRead32(base, RecordAddr(ctx.r3.u32) + 8); return; }
+    g_asked = ByRecord(ctx.r3.u32);
+    if (g_asked) { ctx.r3.u64 = GRead32(base, RecordAddr(*g_asked, ctx.r3.u32) + 8); return; }
     LogOddRecord("82276380", ctx.r3.u32, uint32_t(ctx.lr));
     __imp__sub_82276380(ctx, base);
 }
@@ -281,9 +361,9 @@ PPC_FUNC(sub_82276380)                      // record -> +8 UI row
 extern "C" PPC_FUNC(__imp__sub_823D11B8);
 PPC_FUNC(sub_823D11B8)                      // a HUD picture (r4 resource, r5 number, ...)
 {
-    if (g_askedRick && ctx.r4.u32 == kHudResource)
+    if (g_asked && ctx.r4.u32 == kHudResource)
         for (uint32_t k = 0; k < 3; ++k)
-            if (ctx.r5.u32 == kHudDonor[k]) { ctx.r5.u64 = kHudRick[k]; break; }
+            if (ctx.r5.u32 == kHudDonor[k]) { ctx.r5.u64 = g_asked->hud[k]; break; }
     __imp__sub_823D11B8(ctx, base);
 }
 
@@ -291,7 +371,7 @@ extern "C" PPC_FUNC(__imp__sub_82B62BE8);
 PPC_FUNC(sub_82B62BE8)                      // (sprite r3, label name r4): jump to the label
 {
     const uint32_t name = ctx.r4.u32;
-    if (g_askedRick && g.ready && name)
+    if (g_asked && name)
     {
         const char* text = reinterpret_cast<const char*>(base + name);
         const size_t n = strnlen(text, 120);
@@ -302,10 +382,10 @@ PPC_FUNC(sub_82B62BE8)                      // (sprite r3, label name r4): jump 
                 static uint32_t ring = 0;
                 const uint32_t copy = g.labels + 128 * (ring++ & 3);
                 std::memcpy(base + copy, text, n + 1);
-                std::memcpy(base + copy + at, "ric", 3);
+                std::memcpy(base + copy + at, g_asked->code, 3);
                 ctx.r4.u64 = copy;
-                if (std::getenv("TTT2_RICK_TRACE"))
-                    std::fprintf(stderr, "[rick] label %s -> %s, lr %08X\n", text,
+                if (Traced())
+                    std::fprintf(stderr, "[added] label %s -> %s, lr %08X\n", text,
                                  reinterpret_cast<const char*>(base + copy), uint32_t(ctx.lr));
                 break;
             }
@@ -315,156 +395,179 @@ PPC_FUNC(sub_82B62BE8)                      // (sprite r3, label name r4): jump 
 
 PPC_FUNC(sub_82276270)                      // the record's +20 function: Marduk's
 {
-    if (Ours(ctx.r3.u32)) ctx.r3.u64 = kDonorRecord0 + (ctx.r3.u32 - kRecord0);
+    if (const Fighter* f = ByRecord(ctx.r3.u32)) ctx.r3.u64 = kDonorRecord0 + (ctx.r3.u32 - f->record0);
     __imp__sub_82276270(ctx, base);
 }
 
-void RickLendPortraits(uint8_t* base);
+void AddedLendPortraits(uint8_t* base, const Fighter& f);
 PPC_FUNC(sub_82276348)
 {
     const uint32_t id = ctx.r3.u32, lr = uint32_t(ctx.lr);
-    g_askedRick = On() && g.ready && id == kId;
-    if (g_askedRick) { RickLendPortraits(base); ctx.r3.u64 = GRead32(base, g.records + 8); }
+    g_asked = ById(id);
+    if (g_asked) { AddedLendPortraits(base, *g_asked); ctx.r3.u64 = GRead32(base, g_asked->records + 8); }
     else __imp__sub_82276348(ctx, base);
-    if (std::getenv("TTT2_RICK_TRACE"))
+    if (Traced())
     {
         static std::set<std::pair<uint32_t, uint32_t>> seen;
         if (seen.size() < 3000 && seen.emplace(id, lr).second)
-            std::fprintf(stderr, "[rick] id_to_row(%u) = %u lr %08X\n", id, ctx.r3.u32, lr);
+            std::fprintf(stderr, "[added] id_to_row(%u) = %u lr %08X\n", id, ctx.r3.u32, lr);
     }
 }
 
 PPC_FUNC(sub_822761D0)
 {
-    if (On() && g.ready && ctx.r3.u32 == kId) { ctx.r3.u64 = 2; return; }
+    if (ById(ctx.r3.u32)) { ctx.r3.u64 = 2; return; }
     __imp__sub_822761D0(ctx, base);
 }
 
 PPC_FUNC(sub_82276200)
 {
-    if (On() && g.ready && ctx.r3.u32 == kId) { ctx.r3.u64 = kRecord0; return; }
+    if (const Fighter* f = ById(ctx.r3.u32)) { ctx.r3.u64 = f->record0; return; }
     __imp__sub_82276200(ctx, base);
 }
 
-int g_pickProxy = 0;                        // sub_8227DC40 runs for Rick with Marduk's id: his records answer it
-bool g_rickPickedElsewhere = false;         // Rick picked through sub_8227DC40 (any pick, the dummy's too)
+const Fighter* g_pickProxy = nullptr;      // sub_8227DC40 runs for an added fighter with Marduk's id: its records answer
 PPC_FUNC(sub_82276218)
 {
-    if (On() && g.ready && (ctx.r3.u32 == kId || (g_pickProxy && ctx.r3.u32 == kDonorId))) { ctx.r3.u64 = kRecord0 + (ctx.r4.u32 < 2 ? ctx.r4.u32 : 0); return; }
+    const Fighter* f = ById(ctx.r3.u32);
+    if (!f && g_pickProxy && ctx.r3.u32 == kDonorId) f = g_pickProxy;
+    if (f) { ctx.r3.u64 = f->record0 + (ctx.r4.u32 < 2 ? ctx.r4.u32 : 0); return; }
     __imp__sub_82276218(ctx, base);
 }
 
 PPC_FUNC(sub_82276440)
 {
-    if (On() && g.ready && kRow != kDonorRow && ctx.r3.u32 == kRow) { ctx.r3.u64 = kRecord0; return; }
+    if (const Fighter* f = ByRow(ctx.r3.u32)) { ctx.r3.u64 = f->record0; return; }
     __imp__sub_82276440(ctx, base);
 }
 
 PPC_FUNC(sub_82331B50)                      // (players, slot, record, ...): reads kCodes[id] with id < 63
 {
-    if (!Ours(ctx.r5.u32)) { __imp__sub_82331B50(ctx, base); return; }
+    const Fighter* f = ByRecord(ctx.r5.u32);
+    if (!f) { __imp__sub_82331B50(ctx, base); return; }
     const uint32_t slot = kCodes + 4 * kDonorId, donorCode = GRead32(base, slot);
-    GWrite32(base, slot, g.code);
+    GWrite32(base, slot, f->codeAddr);
     ++g_proxy;
     __imp__sub_82331B50(ctx, base);
     --g_proxy;
     GWrite32(base, slot, donorCode);
-    std::fprintf(stderr, "[rick] loaded player %u from record %u (result %u)\n", ctx.r4.u32, 0u, ctx.r3.u32);
+    std::fprintf(stderr, "[added] loaded player %u as %s (result %u)\n", ctx.r4.u32, f->name, ctx.r3.u32);
 }
 
 // The pick gate (sub_82276760: can id r3 be picked) needs no override since TTT2-Recomp 0.2.5 hooks it itself
 // (classic_offline.cpp, wrapping the title's): the title's answers an id out of 0-62 as Paul's (always yes).
 
 extern "C" PPC_FUNC(__imp__sub_82276628);
-PPC_FUNC(sub_82276628)                      // sets a player (r3) up from its record (+88): with Marduk's, then Rick's id
+PPC_FUNC(sub_82276628)                      // sets a player (r3) up from its record (+88): with Marduk's, then its id
 {
     const uint32_t player = ctx.r3.u32, record = GRead32(base, player + 88);
-    if (!Ours(record)) { __imp__sub_82276628(ctx, base); return; }
-    const uint32_t donor = kDonorRecord0 + (record - kRecord0), donorRow = kRecords + donor * kRecordSize + 12;
+    const Fighter* f = ByRecord(record);
+    if (!f) { __imp__sub_82276628(ctx, base); return; }
+    const uint32_t donor = kDonorRecord0 + (record - f->record0), donorRow = kRecords + donor * kRecordSize + 12;
     GWrite32(base, player + 88, donor);
-    GWrite32(base, donorRow, kRow);                         // it loads the motion data by the record's row
+    GWrite32(base, donorRow, f->row);                       // it loads the motion data by the record's row
     __imp__sub_82276628(ctx, base);
     GWrite32(base, donorRow, kDonorRow);
     GWrite32(base, player + 88, record);
-    GWrite32(base, player + 84, kId);
-    GWrite32(base, player + 80, kRow);
-    std::fprintf(stderr, "[rick] player %08X set up from record %u\n", player, record);
+    GWrite32(base, player + 84, f->id);
+    GWrite32(base, player + 80, f->row);
+    std::fprintf(stderr, "[added] player %08X set up as %s from record %u\n", player, f->name, record);
 }
 
 extern "C" PPC_FUNC(__imp__sub_82590690);
 PPC_FUNC(sub_82590690)                      // (holder r3, row r4): its three resources from the row's keys
 {
-    if (On() && (ctx.r4.u32 == kRow || ctx.r4.u32 == kDonorRow))
+    if (On() && (ByRow(ctx.r4.u32) || ctx.r4.u32 == kDonorRow))
     {
         static uint32_t logged = 0;
         const uint32_t row = kMotionRows + 12 * ctx.r4.u32;
         if (logged++ < 20)
-            std::fprintf(stderr, "[rick] motion row %u: %08X %08X %08X (holder %08X, lr %08X)\n", ctx.r4.u32,
+            std::fprintf(stderr, "[added] motion row %u: %08X %08X %08X (holder %08X, lr %08X)\n", ctx.r4.u32,
                          GRead32(base, row), GRead32(base, row + 4), GRead32(base, row + 8), ctx.r3.u32,
                          uint32_t(ctx.lr));
     }
     __imp__sub_82590690(ctx, base);
 }
 
+// The picks, as the select screen commits them (player, member): the id whose member byte the title's copies cap
+// at 62 (sub_822815E0). A select cursor (player object) has its player at +320 and the members picked so far at +340.
+namespace {
+uint32_t g_picks[2][2] = {};
+void NotePick(uint8_t* base, uint32_t cursor, uint32_t member, uint32_t id)
+{
+    const uint32_t player = GRead32(base, cursor + 320);
+    if (player < 2 && member < 2) g_picks[player][member] = ById(id) ? id : 0;
+}
+}
+
 extern "C" PPC_FUNC(__imp__sub_8227DC40);
 PPC_FUNC(sub_8227DC40)                      // a pick (?, player r4, ..., id r7): first tests the id's bit in the
 {                                           // player's mask at +328, which no id above 63 has (sld by 64 is 0)
-    if (!(On() && g.ready && ctx.r7.u32 == kId)) { __imp__sub_8227DC40(ctx, base); return; }
-    const uint32_t player = ctx.r4.u32;
-    // One Rick per team: the title keeps a fighter out of the second member by its cleared bit in this mask; Rick
-    // has no bit and Marduk's lent one is put back after his pick, so while a member's record (+348 / +352) is
-    // already Rick's the pick goes through with his own id 64, whose bit test fails as for any unavailable fighter.
-    if (Ours(GRead32(base, player + 348)) || Ours(GRead32(base, player + 352)))
+    const uint32_t cursor = ctx.r4.u32, id = ctx.r7.u32, member = cursor ? GRead32(base, cursor + 340) : 2;
+    const Fighter* f = ById(id);
+    if (!f)
+    {
+        __imp__sub_8227DC40(ctx, base);
+        if (ctx.r3.u32 && On() && g.ready) NotePick(base, cursor, member, id);
+        return;
+    }
+    // One of each per team: the title keeps a fighter out of the second member by its cleared bit in this mask; an
+    // added fighter has no bit and Marduk's lent one is put back after its pick, so while a member's record
+    // (+348 / +352) is already this fighter's the pick goes through with its own id, whose bit test fails as for any
+    // unavailable fighter.
+    if (ByRecord(GRead32(base, cursor + 348)) == f || ByRecord(GRead32(base, cursor + 352)) == f)
     {
         static uint32_t logged = 0;
-        if (logged++ < 5) std::fprintf(stderr, "[rick] second Rick in the team refused (player %08X)\n", player);
+        if (logged++ < 5) std::fprintf(stderr, "[added] second %s in the team refused (player %08X)\n", f->name, cursor);
         __imp__sub_8227DC40(ctx, base);
         return;
     }
     const uint64_t bit = 1ull << kDonorId;
-    const uint64_t mask = (uint64_t(GRead32(base, player + 328)) << 32) | GRead32(base, player + 332);
+    const uint64_t mask = (uint64_t(GRead32(base, cursor + 328)) << 32) | GRead32(base, cursor + 332);
     const uint64_t lent = mask | bit;
-    GWrite32(base, player + 328, uint32_t(lent >> 32));
-    GWrite32(base, player + 332, uint32_t(lent));
+    GWrite32(base, cursor + 328, uint32_t(lent >> 32));
+    GWrite32(base, cursor + 332, uint32_t(lent));
     ctx.r7.u64 = kDonorId;
-    ++g_pickProxy;
+    const Fighter* outer = g_pickProxy;
+    g_pickProxy = f;
     __imp__sub_8227DC40(ctx, base);
-    --g_pickProxy;
-    if (ctx.r3.u32) g_rickPickedElsewhere = true;
-    const uint64_t now = (uint64_t(GRead32(base, player + 328)) << 32) | GRead32(base, player + 332);
+    g_pickProxy = outer;
+    if (ctx.r3.u32) NotePick(base, cursor, member, f->id);
+    const uint64_t now = (uint64_t(GRead32(base, cursor + 328)) << 32) | GRead32(base, cursor + 332);
     const uint64_t back = (now & ~bit) | (mask & bit);      // Marduk's own bit as it was
-    GWrite32(base, player + 328, uint32_t(back >> 32));
-    GWrite32(base, player + 332, uint32_t(back));
-    std::fprintf(stderr, "[rick] pick by player %08X -> %u (player +64 = %u, record %u)\n", player, ctx.r3.u32,
-                 GRead32(base, player + 64), GRead32(base, player + 404));
+    GWrite32(base, cursor + 328, uint32_t(back >> 32));
+    GWrite32(base, cursor + 332, uint32_t(back));
+    std::fprintf(stderr, "[added] pick of %s by player %u (cursor %08X), member %u -> %u (record %u)\n", f->name,
+                 GRead32(base, cursor + 320), cursor, member, ctx.r3.u32, GRead32(base, cursor + 404));
 }
 
 extern "C" PPC_FUNC(__imp__sub_82554F08);
 PPC_FUNC(sub_82554F08)                      // bitset (r3: {count, ..., bits}) set(id r4): asserts id < count
 {
-    if (On() && g.ready && ctx.r4.u32 == kId && ctx.r4.u32 >= GRead32(base, ctx.r3.u32))
+    if (ById(ctx.r4.u32) && ctx.r4.u32 >= GRead32(base, ctx.r3.u32))
     {
         static uint32_t logged = 0;
         if (logged++ < 20)
-            std::fprintf(stderr, "[rick] bitset %08X (count %u) set(%u) -> Marduk's bit, lr %08X\n", ctx.r3.u32,
+            std::fprintf(stderr, "[added] bitset %08X (count %u) set(%u) -> Marduk's bit, lr %08X\n", ctx.r3.u32,
                          GRead32(base, ctx.r3.u32), ctx.r4.u32, uint32_t(ctx.lr));
         ctx.r4.u64 = kDonorId;
     }
     __imp__sub_82554F08(ctx, base);
 }
 
-// His portrait files (ttt2rick.convert.portrait): ric/<name>.nut, ric/<name>_blood.nut under TTT2_RICK_BLOOD=1.
+// Portrait files (ttt2rick.convert.portrait): <code>/<name>.nut; Rick's <name>_blood.nut under TTT2_RICK_BLOOD=1.
 namespace {
-const char* PortraitFile(const char* name)
+const char* PortraitFile(const Fighter& f, const char* name)
 {
     static char path[64];
-    std::snprintf(path, sizeof(path), "ric/%s%s.nut", name, Bloody() ? "_blood" : "");
+    std::snprintf(path, sizeof(path), "%s/%s%s.nut", f.code, name, Bloody() && f.nutBlood ? "_blood" : "");
     return path;
 }
 }
 
 // Portraits: the portrait code (sub_8262B9A0: screen r3, member r4) finds a member's UI row through sub_82276348
-// and its two pictures' keys in a table by row; for Rick, Marduk's row of the table holds Rick's keys meanwhile.
+// and its two pictures' keys in a table by row; for an added fighter, Marduk's row of the table holds its keys
+// meanwhile.
 namespace {
 constexpr uint32_t kPortraitKeys = 0x820CD408, kDonorUiRow = 18;
 uint32_t g_portraitScope = 0, g_lentKeys[2] = {}, g_lent = 0;
@@ -481,43 +584,44 @@ PPC_FUNC(sub_8262B9A0)
         g_lent = 0;
     }
 }
-void RickLendPortraits(uint8_t* base)       // from sub_82276348 (id 64) inside sub_8262B9A0
+void AddedLendPortraits(uint8_t* base, const Fighter& f)   // from sub_82276348 (an added id) inside sub_8262B9A0
 {
-    if (!g_portraitScope || g_lent) return;
+    if (!g_portraitScope) return;
     for (uint32_t s = 0; s < 2; ++s)
     {
         const uint32_t at = kPortraitKeys + 4 * (2 * kDonorUiRow + s);
-        g_lentKeys[s] = GRead32(base, at);
-        GWrite32(base, at, Crc(PortraitFile(s ? "portrait_2p" : "portrait_1p")));
+        if (!g_lent) g_lentKeys[s] = GRead32(base, at);
+        GWrite32(base, at, Crc(PortraitFile(f, s ? "portrait_2p" : "portrait_1p")));
     }
     g_lent = 1;
 }
 
 // The loading/VS screens' portrait set (sub_82711E78: object r3, internal id r4) copies a fighter's keys from the
-// key tables by its UI row: for Rick, his own pictures (the main one and, for the alternate kinds Marduk has, the
-// green one).
+// key tables by its UI row: for an added fighter, its own pictures (the main one and, for the alternate kinds Marduk
+// has, the green one).
 extern "C" PPC_FUNC(__imp__sub_82711E78);
 PPC_FUNC(sub_82711E78)
 {
     const uint32_t obj = ctx.r3.u32, id = ctx.r4.u32;
-    if (On()) std::fprintf(stderr, "[rick] portrait set %08X for id %u, lr %08X\n", obj, id, uint32_t(ctx.lr));
+    if (On()) std::fprintf(stderr, "[added] portrait set %08X for id %u, lr %08X\n", obj, id, uint32_t(ctx.lr));
     __imp__sub_82711E78(ctx, base);
-    if (!(On() && g.ready && id == kId)) return;
-    GWrite32(base, obj + 0, Crc(PortraitFile("portrait_1p")));
+    const Fighter* f = ById(id);
+    if (!f) return;
+    GWrite32(base, obj + 0, Crc(PortraitFile(*f, "portrait_1p")));
     for (uint32_t off : { 12u, 24u, 36u })
-        if (GRead32(base, obj + off)) GWrite32(base, obj + off, Crc(PortraitFile("portrait_green")));
-    std::fprintf(stderr, "[rick] portrait set %08X: Rick's\n", obj);
+        if (GRead32(base, obj + off)) GWrite32(base, obj + off, Crc(PortraitFile(*f, "portrait_green")));
+    std::fprintf(stderr, "[added] portrait set %08X: %s's\n", obj, f->name);
 }
 
 extern "C" PPC_FUNC(__imp__sub_82584ED0);
 PPC_FUNC(sub_82584ED0)                      // (table r3, index r4): its entry is set; asserts index < count
 {
     const uint32_t count = GRead32(base, GRead32(base, ctx.r3.u32 + 68) + 12);
-    if (On() && g.ready && ctx.r4.u32 == kId && ctx.r4.u32 >= count)
+    if (ById(ctx.r4.u32) && ctx.r4.u32 >= count)
     {
         static uint32_t logged = 0;
         if (logged++ < 20)
-            std::fprintf(stderr, "[rick] table %08X (count %u) [%u] -> Marduk's, lr %08X\n", ctx.r3.u32, count,
+            std::fprintf(stderr, "[added] table %08X (count %u) [%u] -> Marduk's, lr %08X\n", ctx.r3.u32, count,
                          ctx.r4.u32, uint32_t(ctx.lr));
         ctx.r4.u64 = kDonorId;
     }
@@ -527,11 +631,11 @@ PPC_FUNC(sub_82584ED0)                      // (table r3, index r4): its entry i
 extern "C" PPC_FUNC(__imp__sub_825550C8);
 PPC_FUNC(sub_825550C8)                      // (?, id r4, data r5): the save data's per-fighter entry (Tag25SaveData,
 {                                           // at a pick): tests it by id (sub_82584ED0), then writes it with the id
-    if (On() && g.ready && ctx.r4.u32 == kId)   // itself (sub_82584F08), out of its 63 for Rick: Marduk's entry
+    if (ById(ctx.r4.u32))                   // itself (sub_82584F08), out of its 63 for an added id: Marduk's entry
     {
         static uint32_t logged = 0;
         if (logged++ < 20)
-            std::fprintf(stderr, "[rick] save entry (%08X, %u) -> Marduk's, lr %08X\n", ctx.r3.u32, ctx.r4.u32,
+            std::fprintf(stderr, "[added] save entry (%08X, %u) -> Marduk's, lr %08X\n", ctx.r3.u32, ctx.r4.u32,
                          uint32_t(ctx.lr));
         ctx.r4.u64 = kDonorId;
     }
@@ -539,8 +643,8 @@ PPC_FUNC(sub_825550C8)                      // (?, id r4, data r5): the save dat
 }
 
 extern "C" PPC_FUNC(__imp__sub_8258CAE8);
-PPC_FUNC(sub_8258CAE8)                      // a per-fighter counter (u16[59] r3, row r4) += r5: none for Rick (it
-{                                           // would write past the array)
+PPC_FUNC(sub_8258CAE8)                      // a per-fighter counter (u16[59] r3, row r4) += r5: none for an added
+{                                           // fighter (it would write past the array)
     if (On() && ctx.r4.u32 >= 59) return;
     __imp__sub_8258CAE8(ctx, base);
 }
@@ -551,62 +655,85 @@ PPC_FUNC(sub_822763B0)                      // record whose +8 (UI row) is r3: l
     const uint32_t row = ctx.r3.u32, lr = uint32_t(ctx.lr);
     __imp__sub_822763B0(ctx, base);
     static uint32_t logged = 0;
-    if (On() && row >= 59 && logged++ < 40) std::fprintf(stderr, "[rick] row->record(%u) = %u, lr %08X\n", row, ctx.r3.u32, lr);
+    if (On() && row >= 59 && logged++ < 40) std::fprintf(stderr, "[added] row->record(%u) = %u, lr %08X\n", row, ctx.r3.u32, lr);
 }
 
 // The pick handler (sub_8227CFC0: cursor r3, record r4) stores the fighter's id in the match set-up's member byte
-// and caps it at 62 (zkb, a Fight Lab mob): for Rick the byte gets 64 back, so the screens after the select (VS,
-// loading) find him and not row 0 (Paul).
-// Later copies of the members (about a dozen functions, as on Wii U) cap the byte again: while Rick is picked, a
-// member byte holding 62 is his. (62 is otherwise only Fight Lab's mob.) Rick stays picked until another fighter is
-// picked into his member byte: a tag partner's pick has a byte of its own and must not end it (it did, and the VS
-// and promotion screens showed row 0, Paul, for Rick).
-namespace { uint32_t g_inPick = 0, g_pickByte = 0; std::set<uint32_t> g_rickBytes; }
-extern bool g_rickPickedElsewhere;
-extern "C" PPC_FUNC(__imp__sub_822815E0);
-PPC_FUNC(sub_822815E0)                      // a side's member (side r3, member r4) -> its byte (id at +0)
+// (sub_822815E0(side + 640, member): side = the player's, *(manager + 60 + 4 * player)) and caps it at 62 (zkb, a
+// Fight Lab mob): for an added fighter the byte gets its id back, so the screens after the select (VS, loading) find
+// it and not row 0 (Paul).
+// Later copies of the members (about a dozen functions, as on Wii U) cap the byte again: a member byte holding 62 is
+// the added fighter that player picked as that member (g_picks; 62 is otherwise only Fight Lab's mob). For a byte
+// outside the players' sides (a copy elsewhere), the member's pick when only one added fighter is picked as it.
+namespace {
+constexpr uint32_t kManagerPtr = 0x82E6C5A8;              // *(*kManagerPtr + 256): the sides' manager (sub_82653478)
+uint32_t g_inPick = 0, g_pickByte = 0;
+
+int PlayerOfSide(uint8_t* base, uint32_t side)
 {
-    const uint32_t side = ctx.r3.u32, member = ctx.r4.u32, lr = uint32_t(ctx.lr);
+    const uint32_t root = GRead32(base, kManagerPtr), manager = root ? GRead32(base, root + 256) : 0;
+    if (!manager) return -1;
+    for (uint32_t p = 0; p < 2; ++p)
+        if (GRead32(base, manager + 60 + 4 * p) == side) return int(p);
+    return -1;
+}
+
+uint32_t PickedAs(uint8_t* base, uint32_t side, uint32_t member)
+{
+    if (member >= 2) return 0;
+    const int p = PlayerOfSide(base, side);
+    if (p >= 0) return g_picks[p][member];
+    const uint32_t a = g_picks[0][member], b = g_picks[1][member];
+    return a && b && a != b ? 0 : (a ? a : b);
+}
+}
+extern "C" PPC_FUNC(__imp__sub_822815E0);
+PPC_FUNC(sub_822815E0)                      // a side's member (side + 640 r3, member r4) -> its byte (id at +0)
+{
+    const uint32_t side = ctx.r3.u32 - 640, member = ctx.r4.u32, lr = uint32_t(ctx.lr);
     __imp__sub_822815E0(ctx, base);
-    if (std::getenv("TTT2_RICK_TRACE") && ctx.r3.u32)
+    if (!(On() && g.ready) || !ctx.r3.u32) return;
+    if (Traced())
     {
         static std::set<std::tuple<uint32_t, uint32_t, uint32_t>> seen;
         if (seen.size() < 200 && seen.emplace(side, member, lr).second)
-            std::fprintf(stderr, "[rick] member byte (side %08X, member %u) = %u at %08X, lr %08X%s\n", side, member,
-                         base[ctx.r3.u32], ctx.r3.u32, lr, g_inPick ? " (pick)" : "");
+            std::fprintf(stderr, "[added] member byte (side %08X = player %d, member %u) = %u at %08X, lr %08X%s\n",
+                         side, PlayerOfSide(base, side), member, base[ctx.r3.u32], ctx.r3.u32, lr,
+                         g_inPick ? " (pick)" : "");
     }
     if (g_inPick) g_pickByte = ctx.r3.u32;
-    // a pick that is not the player's own (the Practice dummy's, a CPU's) stores the capped 62 without
-    // sub_8227CFC0: sub_8227DC40 marks Rick picked there (62 is otherwise only Fight Lab's mob)
-    else if ((!g_rickBytes.empty() || g_rickPickedElsewhere) && ctx.r3.u32 && base[ctx.r3.u32] == 62)
-        base[ctx.r3.u32] = uint8_t(kId);
+    else if (base[ctx.r3.u32] == 62)
+        if (const uint32_t id = PickedAs(base, side, member)) base[ctx.r3.u32] = uint8_t(id);
 }
 extern "C" PPC_FUNC(__imp__sub_8227CFC0);
 PPC_FUNC(sub_8227CFC0)
 {
-    const uint32_t record = ctx.r4.u32;
+    const uint32_t cursor = ctx.r3.u32, record = ctx.r4.u32, member = GRead32(base, cursor + 340);
     ++g_inPick;
     g_pickByte = 0;
     __imp__sub_8227CFC0(ctx, base);
     --g_inPick;
-    if (On() && g.ready && record < kTitleRecords && g_pickByte) g_rickBytes.erase(g_pickByte);
-    if (Ours(record) && g_pickByte)
+    if (!(On() && g.ready)) return;
+    const Fighter* f = ByRecord(record);
+    if (record < kTitleRecords || f) NotePick(base, cursor, member, f ? f->id : 0);
+    if (f && g_pickByte)
     {
-        g_rickBytes.insert(g_pickByte);
-        base[g_pickByte] = uint8_t(kId);
-        std::fprintf(stderr, "[rick] member byte %08X = %u\n", g_pickByte, kId);
+        base[g_pickByte] = uint8_t(f->id);
+        std::fprintf(stderr, "[added] member byte %08X = %u (%s, player %u member %u)\n", g_pickByte, f->id, f->name,
+                     GRead32(base, cursor + 320), member);
     }
 }
 
 // The select screen's big portraits: sub_8262BEE0 (lister r3) lists container 6CCDFC60's frames, by UI row, in two
 // vectors {first, last, end} at +4 (player 1's frames) and +24 (player 2's); sub_8262B2D0 (lister r3, row r4, slot
-// r5: player * 2 + member) shows one. Rick's two frames follow the container's own (118, 119: ttt2rick.convert.
-// portrait; the bloody two 120, 121); while a slot showing Rick is drawn, Marduk's row of its vector holds Rick's frame. Whose a slot is
-// comes from the select screen (sub_826409E0: screen r3): its player object (*(*(screen + 148) + 48 / 56)) holds
-// the members' records at +348 / +352, and before a pick the cursor's fighter id (sub_8227AE48(player)).
+// r5: player * 2 + member) shows one. The added fighters' frames follow the container's own (Rick's 118, 119, his
+// bloody two 120, 121; Jennifer's 122, 123: ttt2rick.convert.portrait); while a slot showing one of them is drawn,
+// Marduk's row of its vector holds that fighter's frame. Whose a slot is comes from the select screen (sub_826409E0:
+// screen r3): its player object (*(*(screen + 148) + 48 / 56)) holds the members' records at +348 / +352, and before
+// a pick the cursor's fighter id (sub_8227AE48(player)).
 namespace {
-constexpr uint32_t kPortraitKey = 0x6CCDFC60, kPortraitFrame = 118;
-uint32_t g_lister = 0, g_rickFrames[2] = {}, g_selectScreen = 0;
+constexpr uint32_t kPortraitKey = 0x6CCDFC60;
+uint32_t g_lister = 0, g_selectScreen = 0;
 }
 extern "C" PPC_FUNC(__imp__sub_8262BEE0);
 extern "C" PPC_FUNC(__imp__sub_82A827F8);
@@ -619,12 +746,17 @@ PPC_FUNC(sub_8262BEE0)
     Call(ctx, base, __imp__sub_82A827F8, { GRead32(base, lister + 44), g.scratch + 512 });
     const uint32_t entry = ctx.r3.u32, container = entry ? GRead32(base, entry) : 0;
     g_lister = 0;
-    const uint32_t first = kPortraitFrame + (Bloody() ? 2 : 0);
-    if (!container || GRead32(base, container) < first + 2) return;
-    for (uint32_t p = 0; p < 2; ++p)
-        g_rickFrames[p] = container + GRead32(base, container + 4 + 8 * (first + p));
+    if (!container) return;
+    for (Fighter& f : kFighters)
+    {
+        const uint32_t first = f.portraitFrame + (Bloody() && f.nutBlood ? 2 : 0);
+        if (!f.on || GRead32(base, container) < first + 2) { f.frames[0] = f.frames[1] = 0; continue; }
+        for (uint32_t p = 0; p < 2; ++p)
+            f.frames[p] = container + GRead32(base, container + 4 + 8 * (first + p));
+    }
     g_lister = lister;
-    std::fprintf(stderr, "[rick] select portraits: lister %08X, container %08X\n", lister, container);
+    std::fprintf(stderr, "[added] select portraits: lister %08X, container %08X (%u frames)\n", lister, container,
+                 GRead32(base, container));
 }
 
 extern "C" PPC_FUNC(__imp__sub_826409E0);
@@ -635,30 +767,30 @@ PPC_FUNC(sub_826409E0)
 }
 
 extern "C" PPC_FUNC(__imp__sub_8227AE48);
-bool SlotIsRick(PPCContext& ctx, uint8_t* base, uint32_t slot)
+const Fighter* SlotFighter(PPCContext& ctx, uint8_t* base, uint32_t slot)
 {
-    if (!g_selectScreen) return false;
+    if (!g_selectScreen) return nullptr;
     const uint32_t players = GRead32(base, g_selectScreen + 148);
     const uint32_t player = players ? GRead32(base, players + (slot < 2 ? 48 : 56)) : 0;
-    if (!player) return false;
+    if (!player) return nullptr;
     const uint32_t record = GRead32(base, player + 348 + 4 * (slot & 1));
-    bool rick = Ours(record);
+    const Fighter* f = ByRecord(record);
     uint32_t id = ~0u;
     // before its pick a member shows the cursor's fighter: the first member, or the second once the first is picked
-    // (the first's record is set: below kTitleRecords; 139 = none)
-    const bool choosing = (slot & 1) == 0 || GRead32(base, player + 348) < kTitleRecords ||
-                          Ours(GRead32(base, player + 348));
-    if (!rick && choosing && record >= kTitleRecords && !Ours(record))
+    // (the first's record is set: below kTitleRecords or an added one; 139 = none)
+    const uint32_t first = GRead32(base, player + 348);
+    const bool choosing = (slot & 1) == 0 || first < kTitleRecords || ByRecord(first);
+    if (!f && choosing && record >= kTitleRecords)
     {
         Call(ctx, base, __imp__sub_8227AE48, { player });
         id = ctx.r3.u32;
-        rick = id == kId;
+        f = ById(id);
     }
     static uint32_t logged = 0;
-    if (std::getenv("TTT2_RICK_TRACE") && logged++ < 60)
-        std::fprintf(stderr, "[rick] portrait slot %u: record %u, cursor id %d -> %s\n", slot, record, int(id),
-                     rick ? "Rick" : "not Rick");
-    return rick;
+    if (Traced() && logged++ < 60)
+        std::fprintf(stderr, "[added] portrait slot %u: record %u, cursor id %d -> %s\n", slot, record, int(id),
+                     f ? f->name : "not added");
+    return f;
 }
 
 extern "C" PPC_FUNC(__imp__sub_8262B2D0);
@@ -669,14 +801,14 @@ PPC_FUNC(sub_8262B2D0)
     if (On() && g_lister == lister && row == kDonorUiRow && slot < 4)
     {
         const PPCContext saved = ctx;
-        const bool rick = SlotIsRick(ctx, base, slot);
+        const Fighter* f = SlotFighter(ctx, base, slot);
         ctx = saved;
-        if (rick)
+        if (f && f->frames[slot < 2 ? 0 : 1])
         {
             const uint32_t first = GRead32(base, lister + (slot < 2 ? 4 : 24));
             at = first + 4 * row;
             theirs = GRead32(base, at);
-            GWrite32(base, at, g_rickFrames[slot < 2 ? 0 : 1]);
+            GWrite32(base, at, f->frames[slot < 2 ? 0 : 1]);
         }
     }
     __imp__sub_8262B2D0(ctx, base);
@@ -685,74 +817,73 @@ PPC_FUNC(sub_8262B2D0)
 
 // The profile's per-fighter records (tk::profile::PartsCS::EachFighterInfoCS, Array<, 63>, 76 bytes each at
 // profile +9216): sub_82659F48 (profile r3) updates the team members' records after a match, by each member's id
-// byte (profile +640 + member * 4288). Rick's 64 indexed past the array (an ignored assert) and overwrote the
-// profile data after it, and the next Arcade load after a continue never finished. While it runs, Rick's byte is
-// Marduk's id: his results go to Marduk's record (as the other per-fighter save entry, sub_825550C8).
+// byte (profile +640 + member * 4288). An added id indexed past the array (an ignored assert) and overwrote the
+// profile data after it, and the next Arcade load after a continue never finished. While it runs, an added
+// fighter's byte is Marduk's id: its results go to Marduk's record (as the other per-fighter save entry, sub_825550C8).
 extern "C" PPC_FUNC(__imp__sub_82659F48);
 PPC_FUNC(sub_82659F48)
 {
     const uint32_t profile = ctx.r3.u32;
-    uint32_t lent[2] = {};
+    uint8_t lent[2] = {};
     for (uint32_t k = 0; k < 2; ++k)
-        if (On() && g.ready && profile && base[profile + 640 + 4288 * k] == kId)
+        if (profile && ById(base[profile + 640 + 4288 * k]))
         {
-            lent[k] = 1;
+            lent[k] = base[profile + 640 + 4288 * k];
             base[profile + 640 + 4288 * k] = uint8_t(kDonorId);
         }
     __imp__sub_82659F48(ctx, base);
     for (uint32_t k = 0; k < 2; ++k)
-        if (lent[k]) base[profile + 640 + 4288 * k] = uint8_t(kId);
-    if (lent[0] || lent[1]) std::fprintf(stderr, "[rick] profile %08X: fighter record as Marduk's\n", profile);
+        if (lent[k]) base[profile + 640 + 4288 * k] = lent[k];
+    if (lent[0] || lent[1]) std::fprintf(stderr, "[added] profile %08X: fighter record as Marduk's\n", profile);
 }
 
 // The other accessors of the same per-fighter tables (count at *(table + 68) + 12; an index past it is the title's
-// deliberate store to address 0) used when the save data is updated after a match, as sub_82584ED0: Rick's id is
+// deliberate store to address 0) used when the save data is updated after a match, as sub_82584ED0: an added id is
 // Marduk's there. Their failed checks were the null writes after a lost Arcade match, after which the next match's
 // load (on continue) never finished.
 namespace {
-void RickTableIndex(uint8_t* base, uint32_t table, PPCRegister& index, uint32_t lr, const char* fn)
+void AddedTableIndex(uint8_t* base, uint32_t table, PPCRegister& index, uint32_t lr, const char* fn)
 {
-    if (!(On() && g.ready && index.u32 == kId && table)) return;
+    if (!(ById(index.u32) && table)) return;
     const uint32_t info = GRead32(base, table + 68);
     if (info && index.u32 < GRead32(base, info + 12)) return;
     static uint32_t logged = 0;
-    if (logged++ < 20) std::fprintf(stderr, "[rick] %s table %08X [64] -> Marduk's, lr %08X\n", fn, table, lr);
+    if (logged++ < 20) std::fprintf(stderr, "[added] %s table %08X [%u] -> Marduk's, lr %08X\n", fn, table, index.u32, lr);
     index.u64 = kDonorId;
 }
 }
 extern "C" PPC_FUNC(__imp__sub_82584E88);
 PPC_FUNC(sub_82584E88)                      // (table r3, index r4): the entry, asserted set
 {
-    RickTableIndex(base, ctx.r3.u32, ctx.r4, uint32_t(ctx.lr), "82584E88");
+    AddedTableIndex(base, ctx.r3.u32, ctx.r4, uint32_t(ctx.lr), "82584E88");
     __imp__sub_82584E88(ctx, base);
 }
 extern "C" PPC_FUNC(__imp__sub_82585230);
 PPC_FUNC(sub_82585230)                      // (table r3, index r4, ...)
 {
-    RickTableIndex(base, ctx.r3.u32, ctx.r4, uint32_t(ctx.lr), "82585230");
+    AddedTableIndex(base, ctx.r3.u32, ctx.r4, uint32_t(ctx.lr), "82585230");
     __imp__sub_82585230(ctx, base);
 }
 extern "C" PPC_FUNC(__imp__sub_82585590);
 PPC_FUNC(sub_82585590)                      // (table r3, ..., index r7, ...)
 {
-    RickTableIndex(base, ctx.r3.u32, ctx.r7, uint32_t(ctx.lr), "82585590");
+    AddedTableIndex(base, ctx.r3.u32, ctx.r7, uint32_t(ctx.lr), "82585590");
     __imp__sub_82585590(ctx, base);
 }
-
-
 
 // A player's body collision (sub_822FB4F8: player r3) takes a per-fighter pointer by id from two 64-entry tables
 // (0x82DD0A68, and 0x82DD0B68 in some down states), read without a bound: Rick's 64 got the second table's first
 // entry, and a downed Rick could not be hit (found 2026-10-25 by bisecting the functions that read player +84;
-// Rick's files under Marduk's id 17 were hit). While it runs, Rick's id is Marduk's.
+// Rick's files under Marduk's id 17 were hit). While it runs, an added fighter's id is Marduk's.
 extern "C" PPC_FUNC(__imp__sub_822FB4F8);
 PPC_FUNC(sub_822FB4F8)
 {
     const uint32_t player = ctx.r3.u32;
-    const bool lend = On() && g.ready && player && GRead32(base, player + 84) == kId;
+    const uint32_t id = player ? GRead32(base, player + 84) : 0;
+    const bool lend = player && ById(id);
     if (lend) GWrite32(base, player + 84, kDonorId);
     __imp__sub_822FB4F8(ctx, base);
-    if (lend) GWrite32(base, player + 84, kId);
+    if (lend) GWrite32(base, player + 84, id);
 }
 
 // TTT2_RICK_GRIDTRACE=1: the select grids' cell lookups (sub_8227A0D8: grids r3 (mode at +76), cell r4) and the
@@ -766,8 +897,56 @@ PPC_FUNC(sub_8227A0D8)
         static std::set<std::pair<uint32_t, uint32_t>> seen;
         const uint32_t mode = GRead32(base, ctx.r3.u32 + 76), lr = uint32_t(ctx.lr);
         if (seen.size() < 100 && seen.emplace(mode, lr).second)
-            std::fprintf(stderr, "[rick] grid cell (grids %08X mode %u, cell %d) lr %08X\n", ctx.r3.u32, mode,
+            std::fprintf(stderr, "[added] grid cell (grids %08X mode %u, cell %d) lr %08X\n", ctx.r3.u32, mode,
                          int32_t(ctx.r4.u32), lr);
     }
     __imp__sub_8227A0D8(ctx, base);
+}
+
+// TTT2_RICK_TRACE: the 2D screens' sprite label jumps (sub_826278E0: layout r3, sprite name r4, label r5, both
+// MSVC strings: the text inline under 16 characters of capacity, else at +0), each distinct one once.
+extern "C" PPC_FUNC(__imp__sub_826278E0);
+PPC_FUNC(sub_826278E0)
+{
+    if (Traced())
+    {
+        auto text = [&](uint32_t s) {
+            const uint32_t at = GRead32(base, s + 20) >= 16 ? GRead32(base, s) : s;
+            return std::string(reinterpret_cast<const char*>(base + at), strnlen(reinterpret_cast<const char*>(base + at), 100));
+        };
+        static std::set<std::tuple<std::string, std::string, uint32_t>> seen;
+        const std::string sprite = text(ctx.r4.u32), label = text(ctx.r5.u32);
+        if (seen.size() < 400 && seen.emplace(sprite, label, uint32_t(ctx.lr)).second)
+            std::fprintf(stderr, "[added] sprite %s -> label %s (asked %s), lr %08X\n", sprite.c_str(), label.c_str(),
+                         g_asked ? g_asked->name : "-", uint32_t(ctx.lr));
+    }
+    __imp__sub_826278E0(ctx, base);
+}
+
+// The VS screen (sub_826353D8) shows a side's second member's panel unless the side is solo, which sub_82634870
+// (screen r3, side r4) decides by its two members' records (sub_822813D8(set-up, side) and (set-up, side + 2))
+// having the same UI row: an added fighter has Marduk's row, so a team of Marduk and an added fighter, or of two
+// added ones, showed one panel. It is solo only when the members are the same fighter.
+extern "C" PPC_FUNC(__imp__sub_82634870);
+extern "C" PPC_FUNC(__imp__sub_825B7370);
+extern "C" PPC_FUNC(__imp__sub_822813D8);
+PPC_FUNC(sub_82634870)
+{
+    const uint32_t screen = ctx.r3.u32, side = ctx.r4.u32 & 1;
+    __imp__sub_82634870(ctx, base);
+    if (!(ctx.r3.u32 && On() && g.ready)) return;
+    const uint32_t result = ctx.r3.u32;
+    Call(ctx, base, __imp__sub_825B7370, { screen });
+    const uint32_t setup = ctx.r3.u32;
+    Call(ctx, base, __imp__sub_822813D8, { setup, side });
+    const uint32_t first = ctx.r3.u32;
+    Call(ctx, base, __imp__sub_822813D8, { setup, side + 2 });
+    const uint32_t second = ctx.r3.u32;
+    ctx.r3.u64 = result;
+    if (ByRecord(first) != ByRecord(second))
+    {
+        ctx.r3.u64 = 0;
+        if (Traced())
+            std::fprintf(stderr, "[added] side %u: records %u and %u, a tag team\n", side, first, second);
+    }
 }

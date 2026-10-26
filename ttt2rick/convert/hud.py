@@ -1,15 +1,16 @@
-"""Rick's pictures in the fights' HUD: his face (140x140, player 1's and player 2's mirrored) and his name, appended to
-the HUD's texture container.
+"""The added fighters' pictures in the fights' HUD (ttt2rick.convert.fighters): each one's face (140x140, player 1's
+and player 2's mirrored) and name, appended to the HUD's texture container.
 
-python -m ttt2rick.convert.hud <game folder> <picture.png (RGBA, transparent around him)> <out dir>
+python -m ttt2rick.convert.hud <game folder> <out dir>
 
 The HUD's pictures are textures of one container (7C476BDE, data003: 259 textures) by numbers from a table of the
-title (HUD_NUMBERS: 59 x {name, face of player 1, face of player 2}, by UI row; Marduk's 48, 123, 182). Rick's three
-go after the container's own, as 259, 260 and 261 (RICK_NUMBERS); recomp/runtime/rick_slot.cpp gives them for
-Marduk's while the HUD works on Rick. The name is put together from the other names' letters (the same chrome font):
-each letter is cut at the middle of the gaps beside it, and the dark glow around the word is drawn again at its
-ends. The face is Rick's head from the picture, faded out at the shoulders like the game's faces.
-Writes <out>/files/key_7c476bde.bin (for ttt2rick.ttt2.overlay) and hud_face.png, hud_name.png to look at.
+title (HUD_NUMBERS: 59 x {name, face of player 1, face of player 2}, by UI row; Marduk's 48, 123, 182). Each added
+fighter's three go after the container's own (Rick's 259, 260 and 261, Jennifer's 262-264: the fighter's hud);
+recomp/runtime/rick_slot.cpp gives them for Marduk's while the HUD works on that fighter. The name is put together
+from the other names' letters (the same chrome font; the fighter's hud_letters): each letter is cut at the middle of
+the gaps beside it, and the dark glow around the word is drawn again at its ends. The face is the fighter's head from
+its picture, faded out at the shoulders like the game's faces.
+Writes <out>/files/key_7c476bde.bin (for ttt2rick.ttt2.overlay) and <code>_hud_face.png, <code>_hud_name.png to look at.
 """
 import os
 import struct
@@ -22,22 +23,16 @@ from ..ttt2 import xbox
 from ..ttt2.archive import Archives
 from ..ttt2.petexy import nut
 from . import picture as picture_file
+from .fighters import ADDED
 
 CONTAINER = 0x7C476BDE
 HUD_NUMBERS = 0x82DDD2F0        # in the game image
 DONOR_ROW = 18                  # Marduk's UI row
-RICK_NUMBERS = (259, 260, 261)  # rick_slot.cpp kHudRick
+FIRST_ADDED = 259               # the container's own textures end here
 NAME_FIRST = 30                 # the names are textures 30..88, by UI row
-# The letters of RICK: (UI row of a name that has it, its core's columns in that name's texture)
-LETTERS = [(18, 74, 97),        # MARDUK's R
-           (9, 34, 40),         # JIN's I
-           (27, 97, 121),       # BRUCE's C
-           (18, 154, 179)]      # MARDUK's K
 NAME_LEFT, NAME_GAP, NAME_RIGHT = 12, 3, 9      # where the first letter's core starts; between cores; after the last
 FACE = 140
-FACE_SCALE = 0.46               # of the picture's pixels
-FACE_CENTRE_X, FACE_TOP = 462, 0                # in the picture: the head's middle, its hair's top
-FACE_AT = (70, 16)              # where those land in the face
+FACE_AT = (70, 16)              # where the fighter's head middle and top (its hud_face) land in the face
 
 
 def core(a):
@@ -45,10 +40,10 @@ def core(a):
     return (a[..., 3] > 200) & (a[..., :3].max(-1) > 120)
 
 
-def name_texture(textures):
-    sources = {row: xbox.decode_texture(textures[NAME_FIRST + row]) for row, _, _ in LETTERS}
+def name_texture(textures, letters):
+    sources = {row: xbox.decode_texture(textures[NAME_FIRST + row]) for row, _, _ in letters}
     pieces = []
-    for row, x0, x1 in LETTERS:
+    for row, x0, x1 in letters:
         a = sources[row]
         cols = core(a).any(0)
         left, right = x0, x1                    # out to the middle of the gaps (or as far as the glow goes)
@@ -86,10 +81,11 @@ def name_texture(textures):
     return out.clip(0, 255).astype(np.uint8)
 
 
-def face_texture(picture):
-    pic = picture.resize((round(picture.width * FACE_SCALE), round(picture.height * FACE_SCALE)), Image.LANCZOS)
+def face_texture(picture, place):
+    scale, cx, top = place
+    pic = picture.resize((round(picture.width * scale), round(picture.height * scale)), Image.LANCZOS)
     layer = Image.new('RGBA', (FACE, FACE))
-    layer.paste(pic, (FACE_AT[0] - round(FACE_CENTRE_X * FACE_SCALE), FACE_AT[1] - round(FACE_TOP * FACE_SCALE)))
+    layer.paste(pic, (FACE_AT[0] - round(cx * scale), FACE_AT[1] - round(top * scale)))
     out = np.asarray(layer).astype(np.float32)
     # faded out at the shoulders and the sides, as the game's faces are
     y, x = np.mgrid[0:FACE, 0:FACE].astype(np.float32)
@@ -98,25 +94,28 @@ def face_texture(picture):
     return out.clip(0, 255).astype(np.uint8)
 
 
-def main(game, picture, out):
+def main(game, out):
     arc = Archives(game)
     folder = os.path.join(game, 'game') if os.path.isdir(os.path.join(game, 'game')) else game
     image = open(os.path.join(folder, 'tekken.img'), 'rb').read()
     donor = struct.unpack_from('>3I', image, HUD_NUMBERS - 0x82000000 + 12 * DONOR_ROW)
     container = xbox.read_nut(arc.read(CONTAINER))
     textures = container['textures']
-    if len(textures) != RICK_NUMBERS[0]:
-        raise ValueError('the HUD container has %d textures, not %d' % (len(textures), RICK_NUMBERS[0]))
-    name = name_texture(textures)
-    face = face_texture(picture_file.load(picture))
+    if len(textures) != FIRST_ADDED:
+        raise ValueError('the HUD container has %d textures, not %d' % (len(textures), FIRST_ADDED))
     os.makedirs(out, exist_ok=True)
-    Image.fromarray(name).save(os.path.join(out, 'hud_name.png'))
-    Image.fromarray(face).save(os.path.join(out, 'hud_face.png'))
-    for number, img in zip(RICK_NUMBERS, (name, face, face[:, ::-1])):
-        like = textures[donor[RICK_NUMBERS.index(number)]]
-        new = nut.make_texture(np.ascontiguousarray(img), number + 1, like['fmt'], mips=len(like['mips']))
-        textures.append(dict(like, w=img.shape[1], h=img.shape[0], gidx=number + 1, mips=new['mips'],
-                             ext=like['ext'][:-8] + struct.pack('>I', number + 1) + like['ext'][-4:]))
+    for f in ADDED:
+        if len(textures) != f.hud[0]:
+            raise ValueError('%s\'s HUD pictures would be %d.., not %d' % (f.code, len(textures), f.hud[0]))
+        name = name_texture(textures, f.hud_letters)
+        face = face_texture(picture_file.load(f.picture_path()), f.hud_face)
+        Image.fromarray(name).save(os.path.join(out, '%s_hud_name.png' % f.code))
+        Image.fromarray(face).save(os.path.join(out, '%s_hud_face.png' % f.code))
+        for k, (number, img) in enumerate(zip(f.hud, (name, face, face[:, ::-1]))):
+            like = textures[donor[k]]
+            new = nut.make_texture(np.ascontiguousarray(img), number + 1, like['fmt'], mips=len(like['mips']))
+            textures.append(dict(like, w=img.shape[1], h=img.shape[0], gidx=number + 1, mips=new['mips'],
+                                 ext=like['ext'][:-8] + struct.pack('>I', number + 1) + like['ext'][-4:]))
     path = os.path.join(out, 'files', 'key_%08x.bin' % CONTAINER)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     open(path, 'wb').write(xbox.write_nut(container))
@@ -124,6 +123,6 @@ def main(game, picture, out):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 4:
+    if len(sys.argv) != 3:
         sys.exit(__doc__)
     main(*sys.argv[1:])

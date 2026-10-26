@@ -25,7 +25,7 @@ files, plus patches for the recomp.
 | Marduk (`mar`): body model, 138-bone skeleton, 39 textures, preview | **done**: `ttt2rick/ttt2/extract.py`; 2256 mm tall (Rick 2232 mm: no rescale needed) |
 | Rick -> TTT2 body files under Marduk's names: A-pose -> Marduk's T-pose, Marduk's skeleton moved to Rick's joints, skin weights to TTT2 bones, `.nud`/`.nut`/`.bon`, body-only item database | **done**: `ttt2rick/convert/rick.py` (brawler costume, 15 meshes, 6107 vertices, 1.5 MB textures) |
 | Install into the title update's overlay archive (`update/data100`), stock recomp exe | **done**: `ttt2rick/ttt2/overlay.py`; in game (v0.1.9 under Proton): Rick replaces Marduk in Practice, fights with Marduk's moves |
-| Character loader hooks in the recomp (own roster slot instead of replacing Marduk) | todo |
+| Character loader hooks in the recomp (own roster slots instead of replacing Marduk): Rick (id 64) and Jennifer (id 65) | **done**: `recomp/runtime/rick_slot.cpp`, see `recomp/ROSTER.md` |
 | Splatterhouse moves (Havok `.hkx` animations -> TTT2 moves) | later |
 
 ## Use
@@ -42,11 +42,16 @@ python3 recomp/install.py <TTT2-Recomp checkout>       # see recomp/README.md
 .venv/bin/python -m ttt2rick.convert.rick <game folder> work/rick/brawler work/rick/textures work/ttt2/rick_as_mar
 .venv/bin/python -m ttt2rick.ttt2.overlay <game folder> install work/ttt2/rick_as_mar/files   # Rick in Marduk's place
 .venv/bin/python -m ttt2rick.ttt2.overlay <game folder> restore                              # Marduk back
-# Rick in his own slot (TTT2_RICK=1, recomp/runtime): pictures from work/art/rick_taylor.png, then his files
-for m in portrait hud layouts; do .venv/bin/python -m ttt2rick.convert.$m <game folder> work/art/rick_taylor.png work/ttt2/rick_slot/art; done
+# Rick and Jennifer in their own slots (TTT2_RICK=1, recomp/runtime; TTT2_JEN=0 leaves her out). Pictures of both
+# (ttt2rick.convert.fighters: work/art/rick_taylor.png, work/art/jennifer_willis.png) in one art folder, since they
+# share the title's portrait, HUD and layout containers; then each one's files
+for m in portrait hud layouts; do .venv/bin/python -m ttt2rick.convert.$m <game folder> work/ttt2/rick_slot/art; done
 .venv/bin/python -m ttt2rick.convert.idle <game folder> <splatterhouse assets/data> work/ttt2/rick_as_mar work/ttt2/rick_slot/art   # his own stance
 .venv/bin/python -m ttt2rick.convert.slot <game folder> work/ttt2/rick_as_mar work/ttt2/rick_slot work/ttt2/rick_slot/art
-.venv/bin/python -m ttt2rick.ttt2.overlay <game folder> install work/ttt2/rick_slot/files
+.venv/bin/python -m ttt2jen.extract <splatterhouse assets/data> work/jennifer && .venv/bin/python -m ttt2jen.convert <game folder> work/jennifer work/ttt2/jen   # her body
+.venv/bin/python -m ttt2jen.motions work/ttt2/rick_slot/art/files/key_52494332.bin work/ttt2/rick_slot/files/ric.bon work/ttt2/jen/files/jen.bon work/ttt2/jen/files
+.venv/bin/python -m ttt2jen.slot <game folder> work/ttt2/jen work/ttt2/rick_slot work/ttt2/jen_slot
+.venv/bin/python -m ttt2rick.ttt2.overlay <game folder> install work/ttt2/rick_slot/files work/ttt2/jen_slot/files
 ```
 
 Debugging single files:

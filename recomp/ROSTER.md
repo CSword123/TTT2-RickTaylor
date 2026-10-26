@@ -170,3 +170,37 @@ now marks Rick picked on any pick, so the member bytes get 64 back.
 
 Still open: only the standing and guard animations are his. Marduk's moves start and end in Marduk's guard (the game blends
 between them); other idles (crouch, the walk cycles, tag-in) are Marduk's.
+
+## Jennifer: a second added fighter (2026-10-26)
+
+`rick_slot.cpp` now holds a table of added fighters (kFighters), each with its own id, records, motion row, code,
+grid cell, portrait frames and HUD numbers; every hook asks which added fighter (if any) an id, record or row is.
+TTT2_RICK=1 turns them on, TTT2_JEN=0 leaves Jennifer out.
+
+| | Rick | Jennifer |
+|---|---|---|
+| id, records | 64, 140/141 | 65, 142/143 |
+| motion row | 57 {RIC2, RIC1, Marduk's move list} | 58 (a Zako row: Fight Lab's Zako00 loses it while she is on) {JEN2, JEN1, Marduk's move list} |
+| code, body | `ric`: ric.nud/.nut/.bon/.xml on Marduk's skeleton | `jen`: jen.* on Nina's skeleton, with Nina's spring-bone file nin.mop (registry type 3; types 0-4 are nud, nut, bon, mop, havok.xml) |
+| grid cell (modes 1, 2) | 62: top row column 19 | 63: top row column 20 (above Lee) |
+| select portraits (6CCDFC60) | frames 118/119 (bloody 120/121) | 122/123 |
+| HUD (7C476BDE) | 259-261 | 262-264 |
+
+Both have Marduk's records otherwise (UI row 18, sex, +20 function), his voice and his save entries.
+
+- The member bytes: the title's copies cap an id at 62, and with two added fighters a capped 62 has to be told apart.
+  The picks are kept per (player, member) (g_picks, set at sub_8227CFC0 and sub_8227DC40; a select cursor has its
+  player at +320 and the members picked so far at +340), and sub_822815E0's side (r3 - 640) is matched against the
+  players' sides, `*(*(*0x82E6C5A8 + 256) + 60 + 4 * player)` (sub_82653478).
+- The VS screen (sub_826353D8, four slots: p1/p2 _chara_waku_ main/sub) hides a side's second panel when
+  sub_82634870 calls the side solo, which it decided by the members' UI rows being equal: a team of Marduk and an
+  added fighter, or of two added ones, showed one panel (the "Rick + Marduk shows Rick only" item). It is now solo
+  only when both members are the same fighter. Checked in VS Battle: Jennifer + Hwoarang vs Marduk + Jennifer,
+  Rick + Jennifer vs Jennifer + Rick, Rick vs Jennifer solo; in Arcade: Jennifer + Marduk (promotion screen too).
+- The Practice dummy's tag picks use grid mode 0 (the two lower rows only), so no top-row fighter (Violet, Tiger,
+  Rick, Jennifer) can be the second-player team there; VS Battle has them. `proton/route_vs.py` drives VS Battle
+  (the second controller joins with P2+START, then VS BATTLE is enabled in the Offline menu).
+- Select grid icons: the title's icons are the fighter cut to the panel's frame, with the frame's black edges and
+  white line drawn over him (art.in_frame, from the empty panel shape every panel shows); Rick's had covered them.
+  The right grille is shortened by a column for Jennifer's cell (art.Layout.shorten_spacer: texels of the plain
+  perforation cut out before its bevelled edge).

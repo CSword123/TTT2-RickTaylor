@@ -1,9 +1,9 @@
 """Drive the game (started here under Proton) to a Practice fight, checking each screen before the next press.
 
-python3 proton/route.py [--exe tekken_recomp_linux.exe] [--rick] [--stop menu|select] [--stage-right 4] [--out fight.png]
+python3 proton/route.py [--exe tekken_recomp_linux.exe] [--rick | --jen] [--stop menu|select] [--stage-right 4] [--out fight.png]
 
---rick: TTT2_RICK=1, and the player picks Rick's cell (top row, column 19); otherwise Marduk. The practice dummy is
-Marduk. Presses sent while a screen animates are often dropped, so every step looks at the screen (a menu's red
+--rick: TTT2_RICK=1, and the player picks Rick's cell (top row, column 19); --jen: Jennifer's (column 20); otherwise
+Marduk. The practice dummy is Marduk (--dummy-rick, --dummy-jen: the player is Marduk and the dummy the added one). Presses sent while a screen animates are often dropped, so every step looks at the screen (a menu's red
 highlighted icon, a known screen) and presses again until it moves on.
 """
 import argparse
@@ -92,6 +92,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--exe', default='tekken_recomp_linux.exe')
     ap.add_argument('--rick', action='store_true')
+    ap.add_argument('--jen', action='store_true', help='the player picks Jennifer (top row, column 20; TTT2_RICK=1)')
     ap.add_argument('--stop', choices=['menu', 'select'])
     ap.add_argument('--arcade', action='store_true', help='Arcade Battle instead of Practice (no dummy; frames '
                     'from the pick on are saved as <out>_NN.png)')
@@ -101,12 +102,17 @@ def main():
                     'left of the cell below Rick\'s (3: Marduk)')
     ap.add_argument('--dummy-rick', action='store_true', help='Practice: the player is Marduk and the dummy Rick '
                     '(TTT2_RICK=1)')
+    ap.add_argument('--dummy-jen', action='store_true', help='Practice: the player is Marduk and the dummy Jennifer')
+    ap.add_argument('--dummy-tag', action='store_true', help='Practice: the dummy is a tag team, its pick and then '
+                    'Marduk (or, when the dummy is Marduk, Marduk and Hwoarang)')
     ap.add_argument('--stage-right', type=int, default=4)       # Germany, Historic Town Square
     ap.add_argument('--out', default=os.path.join(PORT, 'fight.png'))
     a = ap.parse_args()
+    added = 3 if a.rick else 4 if a.jen else 0           # the player's added fighter: columns right of Marduk's
+    dummy = 3 if a.dummy_rick else 4 if a.dummy_jen else 0
 
     env = dict(os.environ, TTT2_FBDUMP='1')
-    if a.rick or a.dummy_rick:
+    if added or dummy:
         env['TTT2_RICK'] = '1'
     fb = os.path.join(PORT, 'fbdump.bmp')
     if os.path.exists(fb):
@@ -150,8 +156,8 @@ def main():
     # the cursor starts on Jun (middle row, column 10): Marduk is column 16
     for _ in range(6):
         drive('RIGHT 100 200', frames=1)
-    if a.rick:
-        for _ in range(3):
+    if added:
+        for _ in range(added):
             drive('RIGHT 100 200', frames=1)
         drive('UP 100 200', frames=1)
     if a.stop == 'select':
@@ -161,7 +167,7 @@ def main():
         drive('A 150 300', frames=1)
         if a.tag:                            # the partner: Marduk (the cursor stays on the first pick)
             drive(frames=8)
-            if a.rick:
+            if added:
                 drive('DOWN 100 200', frames=1)
                 for _ in range(a.partner_left):
                     drive('LEFT 100 200', frames=1)
@@ -172,17 +178,29 @@ def main():
         print(stem + '_NN.png')
         return
     until(lambda s: green(s, 765, 252) or green(s, 915, 252), 'A 150 300', what='the dummy\'s Tag/Solo prompt')
-    until(lambda s: green(s, 915, 252), 'RIGHT 120 200', what='the dummy\'s Solo highlighted')
+    if a.dummy_tag:
+        until(lambda s: green(s, 765, 252), 'LEFT 120 200', what='the dummy\'s Tag highlighted')
+    else:
+        until(lambda s: green(s, 915, 252), 'RIGHT 120 200', what='the dummy\'s Solo highlighted')
     drive('A 150 500', frames=2)
-    if a.rick:                               # the dummy's cursor starts on the player's cell: back to Marduk
+    if added:                                # the dummy's cursor starts on the player's cell: back to Marduk
         drive('DOWN 100 200', frames=1)
-        for _ in range(3):
+        for _ in range(added):
             drive('LEFT 100 200', frames=1)
-    if a.dummy_rick:                         # ... from Marduk's to Rick's
-        for _ in range(3):
+    if dummy:                                # ... from Marduk's to the added fighter's
+        for _ in range(dummy):
             drive('RIGHT 100 200', frames=1)
         drive('UP 100 200', frames=1)
     drive('A 150 500', frames=4)
+    if a.dummy_tag:                          # the second member: Marduk (Hwoarang when the first is Marduk)
+        if dummy:
+            drive('DOWN 100 200', frames=1)
+            for _ in range(dummy):
+                drive('LEFT 100 200', frames=1)
+        else:
+            drive('RIGHT 100 200', frames=1)
+            drive('RIGHT 100 200', frames=1)
+        drive('A 150 500', frames=4, out=os.path.splitext(a.out)[0] + '_dummy.png')
     for _ in range(a.stage_right):           # one stage a press; the list animates, so wait a few frames each
         drive('RIGHT 100 300', frames=4)
     drive('A 150 2000', frames=25, out=a.out)

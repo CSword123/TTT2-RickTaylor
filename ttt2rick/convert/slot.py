@@ -45,22 +45,22 @@ def moveset(arc, image):
     return attacks.edit_moveset(motbin.read(bytes(ms)))
 
 
-def effects(arc):
-    """{path under the overlay: bytes}: Marduk's effect files and their textures under Rick's code."""
+def effects(arc, donor=DONOR, code=CODE):
+    """{path under the overlay: bytes}: the donor's (Marduk's) effect files and their textures under the code (Rick's)."""
     out = {}
-    names = itemdb.effect_names(arc.read_name(DONOR + '.xml'))
+    names = itemdb.effect_names(arc.read_name(donor + '.xml'))
     for name in names:
-        src = '%s/alo/%s.alo' % (DONOR, name)
+        src = '%s/alo/%s.alo' % (donor, name)
         if not arc.has(arc_key(src)):
             continue
         data = arc.read_name(src)
-        out['%s/alo/%s.alo' % (CODE, name)] = data
+        out['%s/alo/%s.alo' % (code, name)] = data
         at = data.find(ALO_END)
         for t in (data[at + len(ALO_END):].split(b'\0') if at >= 0 else []):
             if t.endswith(b'.nut'):
-                tex = '%s/alo/texture/%s' % (DONOR, t.decode('latin1'))
+                tex = '%s/alo/texture/%s' % (donor, t.decode('latin1'))
                 if arc.has(arc_key(tex)):
-                    out['%s/alo/texture/%s' % (CODE, t.decode('latin1'))] = arc.read_name(tex)
+                    out['%s/alo/texture/%s' % (code, t.decode('latin1'))] = arc.read_name(tex)
     return out, names
 
 

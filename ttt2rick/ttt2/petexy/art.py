@@ -21,6 +21,7 @@ GAME_DRAWN = re.compile(r'^p[12]_chara_waku_$')
 GRID_BESIDE = 'vio'
 PITCH_FROM = ('rog', 'rav')       # grid row 1, columns 0 and 1
 PAGE_WIDTH = 1024                 # new texture pages: at most this wide, as tall as needed
+SPACER_EDGE = 24                  # texels: a grille's bevelled inner edge, kept when it is shortened
 
 # Where a face sits in each kind of picture: (eyes' centre x, y as fractions of the picture, eyes-to-chin as a
 # fraction of its height, which Tekken 7 picture: 'bust' or 'body'). Measured on the TTT2 pictures.
@@ -95,6 +96,31 @@ def compose(others, picture):
     out = _over(p, background)
     out[shared] = mean[shared]
     return out
+
+
+def in_frame(picture, panel):
+    """A grid icon `picture` inside the frame of the empty `panel` (the shape every grid panel shows: a black edge
+    with a white line inside it on the sides and the bottom, fading out upwards, around a see-through grey): the
+    title's icons are their fighter cut to the frame, with the frame's edges drawn over him, and only the head
+    rising out of its open top. Below the frame's top the picture is cut to its outer edges, and the frame drawn on it."""
+    a = panel[..., 3]
+    h, w = a.shape
+    inner = panel[h * 3 // 4, w // 2]                       # the see-through grey inside it
+    alike = (np.abs(a - inner[3]) < 0.05) & (np.abs(panel[..., :3] - inner[:3]).max(-1) < 0.05)
+    cols, rows = np.nonzero(alike[h * 3 // 4])[0], np.nonzero(alike[:, w // 2])[0]
+    if not len(cols) or not len(rows):
+        return picture
+    y, x = np.mgrid[0:h, 0:w]
+    edge = (a > 0.05) & ~((x >= cols.min()) & (x <= cols.max()) & (y <= rows.max()))   # the interior's box, faded too
+    if not edge.any():
+        return picture
+    ys, xs = np.nonzero(edge)
+    top, bottom, left, right = ys.min(), ys.max(), xs.min(), xs.max()
+    out = picture.copy()
+    out[..., 3] *= ~((y > bottom) | ((y >= top) & ((x < left) | (x > right))))
+    frame = panel.copy()
+    frame[..., 3] *= edge
+    return _over(frame, out)
 
 
 def _over(top, bottom):
@@ -290,6 +316,7 @@ class Layout:
         self.atlases = {t['gidx']: t for t in textures['textures']}
         self.decoded = {}
         self.new = []                  # (shape id, Paul's shape, picture): pictures waiting for a page
+        self.replace = []              # (shape, shape id): the shape gets that one's graphics once it has its page
         self.changed = False
 
     # -- the title's pictures
@@ -420,6 +447,8 @@ class Layout:
             return
         # the panel's own picture: the shapes it shows that the neighbour's panel does not
         theirs = {c.char for _, c in other.all_children() if isinstance(c, lmb.Place)}
+        empty = [lm.char(c.char) for _, c in panel.all_children() if isinstance(c, lmb.Place) and c.char in theirs
+                 and isinstance(lm.char(c.char), lmb.Shape)]
         char_map = {}
         stack = self.panel_pictures()
         for _, c in panel.all_children():
@@ -428,7 +457,12 @@ class Layout:
                 pic, size = self.shape_picture(shape)
                 mine = self.sources.framed(face_place(*size), size[0], size[1])
                 ok = stack is not None and stack.shape[1:3] == (size[1], size[0])
-                char_map[shape.id] = self.new_shape(shape, compose(stack, mine) if ok else mine)
+                mine = compose(stack, mine) if ok else mine
+                if empty:
+                    frame, fsize = self.shape_picture(empty[0])
+                    if fsize == size:
+                        mine = in_frame(mine, frame)
+                char_map[shape.id] = self.new_shape(shape, mine)
         sid = lm.take_id(below=grid.id, above=max(panel.id, max(char_map.values())))
         lm.clone_sprite(panel.id, sid, char_map)
         # in the grid: everything the panel below does, at a new depth after the panels, in the top row
@@ -461,14 +495,15 @@ class Layout:
             boxes = [lm.char(c.char).graphics[0].xy_box() for c in panel.frames[0].children
                      if isinstance(c, lmb.Place) and isinstance(lm.char(c.char), lmb.Shape)]
             if x is not None and boxes:
-                self.fit_spacer(x + min(b[0] for b in boxes), x + max(b[2] for b in boxes))
+                self.fit_spacer(x + min(b[0] for b in boxes), x + max(b[2] for b in boxes), xs[1] - xs[0])
         self.changed = True
 
-    def fit_spacer(self, x0, x1):
+    def fit_spacer(self, x0, x1, pitch):
         """The grid's empty top-row corners are covered by a grille (sprites `spacer_left` / `spacer_right`, one shape
         per grid width). The right one whose edge falls in the new cell (x0..x1, in the grid) still covers it:
         it becomes the left one whose edge, mirrored, falls there too (the grid is symmetric), so the grille stops
-        at the new cell as the left one stops at the first top-row cell, and the background shows behind it."""
+        at the new cell as the left one stops at the first top-row cell, and the background shows behind it. In a
+        grille already fitted so (a second new cell, right of the first) it is shortened by a column (pitch)."""
         lm = self.lm
         sides = [lm.find_named('spacer_' + s) for s in ('right', 'left')]
         if not all(sides):
@@ -487,6 +522,9 @@ class Layout:
         rx = origin(right)
         mine = [s for s in shapes(right) if x0 <= rx + s.graphics[0].xy_box()[0] <= x1]
         theirs = [s for s in shapes(left) if x0 <= rx - s.graphics[0].xy_box()[2] <= x1]
+        if len(mine) == 1 and getattr(mine[0], 'fitted', False):
+            self.shorten_spacer(mine[0], pitch)        # one more cell: one column (as far as the last one)
+            return
         if len(mine) != 1 or len(theirs) != 1 or len(theirs[0].graphics) != 1:
             return
         g, like = mine[0].graphics[0], theirs[0].graphics[0]
@@ -497,6 +535,36 @@ class Layout:
         indices = [i for t in range(0, len(like.indices), 3) for i in reversed(like.indices[t:t + 3])]
         mine[0].graphics = [lmb.Graphic(like.atlas, verts, indices, like.fill)]
         mine[0].bounds = lm.add_record(lmb.T_BOUNDS, mine[0].graphics[0].xy_box())
+        mine[0].fitted = True              # the next new cell in it (fit_spacer) shortens it
+
+    def shorten_spacer(self, shape, cut):
+        """The fitted right grille (fit_spacer) with its top band `cut` units shorter at its open end, which a new cell
+        took: its inner edge (the bevelled border, SPACER_EDGE texels) is kept, and texels of the plain perforation
+        just before it are cut out; the band's lower part (beside the lower rows, at the far end) stays where it is.
+        A new picture on a page of the layout's (pages())."""
+        g = shape.graphics[0]
+        pic, (w, h) = self.shape_picture(shape)
+        x0, _, x1, _ = g.xy_box()
+        k = round(cut * w / (x1 - x0))              # texels to cut (1 unit = 1 texel in the title's grilles)
+        # the picture is in texel order; the grille's open end is the texture's high-u end when the shape is
+        # mirrored (its x runs against u), else the low-u one
+        u_at_x0 = min(g.verts, key=lambda v: v[0])[2]
+        edge_high = u_at_x0 >= max(v[2] for v in g.verts) - 1e-6
+        if not 0 < k < w - 2 * SPACER_EDGE:
+            return
+        if edge_high:
+            new = np.concatenate([pic[:, :w - SPACER_EDGE - k], pic[:, w - SPACER_EDGE:]], 1)
+        else:
+            new = np.concatenate([pic[:, :SPACER_EDGE], pic[:, SPACER_EDGE + k:]], 1)
+        # the same quad, its open end moved in by `cut`
+        moved = [[x + cut * (x1 - x) / (x1 - x0), y, u, v] for x, y, u, v in g.verts]
+        like = lmb.Shape(shape.id, shape.bounds, [lmb.Graphic(g.atlas, moved, list(g.indices), g.fill)],
+                         shape.unk1, shape.unk3)
+        cid = self.lm.take_id()
+        self.new.append((cid, like, new))
+        self.lm.add_shape(cid, [lmb.Graphic(g.atlas, [list(v) for v in moved], list(g.indices), g.fill)])
+        self.replace.append((shape, cid))
+        self.changed = True
 
     def panel_pictures(self):
         """Every fighter's grid panel picture (the shape its panel shows and the next fighter's does not)."""
@@ -544,6 +612,9 @@ class Layout:
             shape = self.lm.char(cid)
             shape.graphics = [self.remap(g, like.graphics[0], (px / pw, py / ph, (px + w) / pw, (py + h) / ph))
                               for g in like.graphics]
+        for target, cid in self.replace:
+            target.graphics = self.lm.char(cid).graphics
+            target.bounds = self.lm.add_record(lmb.T_BOUNDS, target.graphics[0].xy_box())
         tex = nut.make_texture(_uint8(page), aid, fmt=2, mips=1)
         return [tex]
 

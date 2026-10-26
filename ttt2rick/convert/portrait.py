@@ -1,20 +1,22 @@
-"""Rick's big select portraits (356x612, player 1 red frame, player 2 blue and mirrored) from a picture of him.
+"""The added fighters' big select portraits (356x612, player 1 red frame, player 2 blue and mirrored) from their
+pictures (ttt2rick.convert.fighters: Rick's, then Jennifer's).
 
-python -m ttt2rick.convert.portrait <game folder> <picture.png (RGBA, transparent around him)> <out dir>
+python -m ttt2rick.convert.portrait <game folder> <out dir>
 
 The frames and panels come from the game's own portraits (container 6CCDFC60, data003: 118 NUTs, two per UI
 position): the median of each side's 59 gives the frame glow, the frame splits the outside from the panel, and the
 panel gets one dark colour. Rick is cut to the panel and the frame drawn over him (nothing of him outside it),
-placed and scaled like a bust: head top at HEAD_TOP, the picture's width scaled by SCALE. Writes
-portrait_1p.png and portrait_2p.png, and the game's single-file form of each (a NUT like Marduk's own,
-`ric/portrait_1p.nut` and `ric/portrait_2p.nut` under <out>/files, for ttt2rick.ttt2.overlay; recomp/runtime/
-rick_slot.cpp gives them to the screens that show Rick), and a green-framed one like the game's alternate
-(illustrated) portraits, portrait_green.png / ric/portrait_green.nut. The select screen's container gets Rick's two
-after its own (frames 118 and 119, CONTAINER_RICK; key_6ccdfc60.bin), which rick_slot.cpp shows for his row.
+placed and scaled like a bust (the fighter's `portrait`: the picture's scale, and its point put at the middle,
+HEAD_TOP from the top). Writes <code>_portrait_1p.png and _2p.png, and the game's single-file form of each (a NUT
+like Marduk's own, `<code>/portrait_1p.nut` and `<code>/portrait_2p.nut` under <out>/files, for ttt2rick.ttt2.overlay;
+recomp/runtime/rick_slot.cpp gives them to the screens that show the fighter), and a green-framed one like the
+game's alternate (illustrated) portraits, <code>_portrait_green.png / <code>/portrait_green.nut. The select screen's
+container gets each fighter's two after its own (key_6ccdfc60.bin; Rick's 118 and 119, CONTAINER_ADDED, then
+Jennifer's 122 and 123: the fighter's portrait_frame), which rick_slot.cpp shows for its row.
 
-The picture's blood is taken off (ttt2rick.convert.clean.clean_picture); each portrait is also made with it, named
-with _blood (portrait_1p_blood.png, ric/portrait_1p_blood.nut, ..., container frames 120 and 121), which
-rick_slot.cpp shows under TTT2_RICK_BLOOD=1.
+Rick's picture's blood is taken off (ttt2rick.convert.clean.clean_picture); each of his portraits is also made with
+it, named with _blood (ric_portrait_1p_blood.png, ric/portrait_1p_blood.nut, ..., container frames 120 and 121),
+which rick_slot.cpp shows under TTT2_RICK_BLOOD=1.
 """
 import os
 import struct
@@ -28,17 +30,15 @@ from ..ttt2 import xbox
 from ..ttt2.archive import Archives
 from ..ttt2.petexy import nut
 from . import picture as picture_file
-from .clean import clean_picture
+from .fighters import ADDED
 
 CONTAINER = 0x6CCDFC60
 KEY_TABLE = 0x820CD408          # in the game image: 59 x {player 1 key, player 2 key}, by UI row
 DONOR_ROW = 18                  # Marduk's UI row
-CONTAINER_RICK = 118            # his frames in the container (player 1, player 2): rick_slot.cpp kPortraitFrame
+CONTAINER_ADDED = 118           # the added fighters' frames in the container, from here on
 SIZE = (356, 612)
 PANEL = (24, 24, 27, 240)       # the panels' dark grey
-SCALE = 0.70                    # of the picture's pixels
-HEAD_TOP, CENTRE_X = 18, 182    # where the picture's top and centre land
-FRINGE = 5                      # px of the picture's dark cut-out edge trimmed off
+HEAD_TOP, CENTRE_X = 18, 182    # where the fighter's portrait point lands
 
 
 def container_items(d):
@@ -102,15 +102,16 @@ def masks(med, side):
     return frame, ~outside & ~frame
 
 
-def compose(med, frame, inside, picture, mirror):
+def compose(med, frame, inside, picture, mirror, place, fringe):
     base = np.where(frame[..., None], med, 0).astype(np.float32)
     base[inside] = PANEL
-    a = picture.getchannel('A').filter(ImageFilter.MinFilter(2 * FRINGE + 1)).filter(ImageFilter.GaussianBlur(1.5))
+    a = picture.getchannel('A').filter(ImageFilter.MinFilter(2 * fringe + 1)).filter(ImageFilter.GaussianBlur(1.5))
     picture = picture.copy()
     picture.putalpha(a)
-    pic = picture.resize((round(picture.width * SCALE), round(picture.height * SCALE)), Image.LANCZOS)
+    scale, px, py = place
+    pic = picture.resize((round(picture.width * scale), round(picture.height * scale)), Image.LANCZOS)
     layer = Image.new('RGBA', SIZE)
-    layer.paste(pic, (CENTRE_X - pic.width // 2, HEAD_TOP))
+    layer.paste(pic, (CENTRE_X - round(px * scale), HEAD_TOP - round(py * scale)))
     fig = np.asarray(layer).astype(np.float32)
     within = np.asarray(Image.fromarray((inside * 255).astype(np.uint8)).filter(ImageFilter.MinFilter(3)).filter(
         ImageFilter.GaussianBlur(1)), np.float32) / 255.0
@@ -126,53 +127,57 @@ def compose(med, frame, inside, picture, mirror):
     return out[:, ::-1] if mirror else out
 
 
-def main(game, picture, out):
+def main(game, out):
     arc = Archives(game)
     P = portraits(arc)
-    bloody = picture_file.load(picture)
     folder = os.path.join(game, 'game') if os.path.isdir(os.path.join(game, 'game')) else game
     image = open(os.path.join(folder, 'tekken.img'), 'rb').read()
     G = green_portraits(arc, image)
     items = container_items(arc.read(CONTAINER))
-    if len(items) != CONTAINER_RICK:
-        raise ValueError('the portrait container has %d frames, not %d' % (len(items), CONTAINER_RICK))
-    os.makedirs(os.path.join(out, 'files', 'ric'), exist_ok=True)
-    for pic, suffix in ((clean_picture(bloody), ''), (bloody, '_blood')):
-        textures = []
-        for side in (0, 1):
-            med = np.median(P[side::2].astype(np.int16), 0).astype(np.uint8)
-            if side == 1:               # the blue side is the red one mirrored: compose unmirrored, then flip
-                med = med[:, ::-1]
-            frame, inside = masks(med, side)
-            img = compose(med, frame, inside, pic, mirror=side == 1)
-            Image.fromarray(img).save(os.path.join(out, 'portrait_%dp%s.png' % (side + 1, suffix)))
-            textures.append(img)
-        med = np.median(G.astype(np.int16), 0).astype(np.uint8)
-        frame, inside = masks(med, 2)
-        green = compose(med, frame, inside, pic, mirror=False)
-        Image.fromarray(green).save(os.path.join(out, 'portrait_green%s.png' % suffix))
-        # the single files: Marduk's, its texture replaced
-        for side, img in enumerate(textures):
-            key = struct.unpack_from('>I', image, KEY_TABLE - 0x82000000 + 4 * (2 * DONOR_ROW + side))[0]
-            donor = xbox.read_nut(arc.read(key))
-            t = donor['textures'][0]
-            new = nut.make_texture(img, t['gidx'], t['fmt'], mips=len(t['mips']))
-            donor['textures'][0] = dict(t, mips=new['mips'])
-            open(os.path.join(out, 'files', 'ric', 'portrait_%dp%s.nut' % (side + 1, suffix)), 'wb').write(
-                xbox.write_nut(donor))
-            if side == 0:
-                donor['textures'][0] = dict(t, mips=nut.make_texture(green, t['gidx'], t['fmt'], mips=len(t['mips']))['mips'])
-                open(os.path.join(out, 'files', 'ric', 'portrait_green%s.nut' % suffix), 'wb').write(xbox.write_nut(donor))
-        # the select screen's container: Rick's two frames after its own (the bloody two after those), from Marduk's
-        for side, img in enumerate(textures):
-            donor = xbox.read_nut(items[2 * DONOR_ROW + side])
-            t = donor['textures'][0]
-            donor['textures'][0] = dict(t, mips=nut.make_texture(img, t['gidx'], t['fmt'], mips=len(t['mips']))['mips'])
-            items.append(xbox.write_nut(donor))
-        print(os.path.join(out, 'portrait_1p%s.png' % suffix), os.path.join(out, 'portrait_2p%s.png' % suffix))
+    if len(items) != CONTAINER_ADDED:
+        raise ValueError('the portrait container has %d frames, not %d' % (len(items), CONTAINER_ADDED))
+    for f in ADDED:
+        if len(items) != f.portrait_frame:
+            raise ValueError('%s\'s portraits would be frames %d.., not %d' % (f.code, len(items), f.portrait_frame))
+        os.makedirs(os.path.join(out, 'files', f.code), exist_ok=True)
+        for pic, suffix in f.variants(picture_file.load(f.picture_path())):
+            textures = []
+            for side in (0, 1):
+                med = np.median(P[side::2].astype(np.int16), 0).astype(np.uint8)
+                if side == 1:               # the blue side is the red one mirrored: compose unmirrored, then flip
+                    med = med[:, ::-1]
+                frame, inside = masks(med, side)
+                img = compose(med, frame, inside, pic, side == 1, f.portrait, f.portrait_fringe)
+                Image.fromarray(img).save(os.path.join(out, '%s_portrait_%dp%s.png' % (f.code, side + 1, suffix)))
+                textures.append(img)
+            med = np.median(G.astype(np.int16), 0).astype(np.uint8)
+            frame, inside = masks(med, 2)
+            green = compose(med, frame, inside, pic, False, f.portrait, f.portrait_fringe)
+            Image.fromarray(green).save(os.path.join(out, '%s_portrait_green%s.png' % (f.code, suffix)))
+            # the single files: Marduk's, its texture replaced
+            for side, img in enumerate(textures):
+                key = struct.unpack_from('>I', image, KEY_TABLE - 0x82000000 + 4 * (2 * DONOR_ROW + side))[0]
+                donor = xbox.read_nut(arc.read(key))
+                t = donor['textures'][0]
+                new = nut.make_texture(img, t['gidx'], t['fmt'], mips=len(t['mips']))
+                donor['textures'][0] = dict(t, mips=new['mips'])
+                open(os.path.join(out, 'files', f.code, 'portrait_%dp%s.nut' % (side + 1, suffix)), 'wb').write(
+                    xbox.write_nut(donor))
+                if side == 0:
+                    donor['textures'][0] = dict(t, mips=nut.make_texture(green, t['gidx'], t['fmt'], mips=len(t['mips']))['mips'])
+                    open(os.path.join(out, 'files', f.code, 'portrait_green%s.nut' % suffix), 'wb').write(
+                        xbox.write_nut(donor))
+            # the select screen's container: the fighter's two frames after the ones before, from Marduk's
+            for side, img in enumerate(textures):
+                donor = xbox.read_nut(items[2 * DONOR_ROW + side])
+                t = donor['textures'][0]
+                donor['textures'][0] = dict(t, mips=nut.make_texture(img, t['gidx'], t['fmt'], mips=len(t['mips']))['mips'])
+                items.append(xbox.write_nut(donor))
+            print(os.path.join(out, '%s_portrait_1p%s.png' % (f.code, suffix)), 'frames', len(items) - 2, len(items) - 1)
     open(os.path.join(out, 'files', 'key_%08x.bin' % CONTAINER), 'wb').write(build_container(items))
 
+
 if __name__ == '__main__':
-    if len(sys.argv) != 4:
+    if len(sys.argv) != 3:
         sys.exit(__doc__)
     main(*sys.argv[1:])

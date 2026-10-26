@@ -1,16 +1,18 @@
-"""Rick's labels in the 2D layouts (loading and VS screens, select screen, results...), with his pictures.
+"""The added fighters' labels in the 2D layouts (loading and VS screens, select screen, results...), with their
+pictures (ttt2rick.convert.fighters: Rick's, then Jennifer's; one run, since they share the layouts).
 
-python -m ttt2rick.convert.layouts <game folder> <picture.png (RGBA, transparent around him)> <out dir>
+python -m ttt2rick.convert.layouts <game folder> <out dir>
 
 A per-fighter picture in a layout (LMB, data007, each followed by its texture container) is a sprite with one label
 per fighter (`chara_face_mar`, `p1_chara_waku_mar`, `face_mar_lose`); the game jumps to the label of the fighter it
-shows. Every layout with Marduk's labels gets Rick's beside them (`chara_face_ric`, ...), showing his pictures,
-made like the other fighters' at that place (ttt2rick.ttt2.petexy.art.Layout: frame and background from theirs, his
-picture placed so his face sits where theirs do), on a new texture page appended to the layout's container. The
-names (`chara_name_s_`, the frames' `p<n>_chara_waku_` labels end on the name) are RICK in the title's lettering.
-The select grids get Rick's panel (`face_panel_ric`, Eddy's cloned with his picture) in his cell, above Eddy's, and
-the right grille (`spacer_right`) that covered his cell becomes the left one mirrored (Layout.fit_spacer).
-recomp/runtime/rick_slot.cpp turns Marduk's labels into these while the game shows Rick.
+shows. Every layout with Marduk's labels gets each added fighter's beside them (`chara_face_ric`, `chara_face_jen`,
+...), showing its pictures, made like the other fighters' at that place (ttt2rick.ttt2.petexy.art.Layout: frame and
+background from theirs, its picture placed so its face sits where theirs do), on new texture pages appended to the
+layout's container. The names (`chara_name_s_`, the frames' `p<n>_chara_waku_` labels end on the name) are its name
+in the title's lettering. The select grids get each one's panel (`face_panel_ric`, Eddy's cloned with his picture,
+in the top row above Eddy's; `face_panel_jen` above Lee's, right of Rick's), its picture inside the panel's frame
+(art.in_frame), and the right grille (`spacer_right`) that covered the cells stops after them (Layout.fit_spacer).
+recomp/runtime/rick_slot.cpp turns Marduk's labels into these while the game shows an added fighter.
 Writes <out>/files/key_<layout>.bin and key_<container>.bin (for ttt2rick.ttt2.overlay).
 """
 import os
@@ -24,32 +26,29 @@ from ..ttt2 import xbox
 from ..ttt2.archive import Archives
 from ..ttt2.petexy import art, lmb
 from . import picture as picture_file
+from .fighters import ADDED
 
-CODE, NAME = 'ric', 'RICK'
 LAYOUTS = 'data007.bin'
-# In the picture (work/art/rick_taylor.png): the eyes' centre and the eyes-to-chin distance, in its pixels
-FACE = (466, 134, 98)
-# Rick's select grid cell (rick_slot.cpp: top row, right of Violet): above Eddy's panel, in the top row
-CELL = {'anchor': 'edd', 'columns': 0, 'grid_row': 0}
-# The select grids' icons (56 x 88) are close-ups of the face (eyes 40% down, eyes to chin 30% of the height,
-# measured on the game's): closer than Layout's general head-and-shoulders place for tall pictures
-ICON_SIZE, ICON_PLACE = (56, 88), (0.50, 0.40, 0.30, 'bust')
+# The select grids' icons (56 x 88): closer than Layout's general head-and-shoulders place for tall pictures, as each
+# fighter's icon says (Rick's: a close-up of the face, as the game's are measured: eyes 40% down, eyes to chin 30%)
+ICON_SIZE = (56, 88)
 
 
 class Sources:
-    """Rick's picture with where his face is, as ttt2rick.ttt2.petexy.art.Layout asks for it."""
+    """A fighter's picture with where its face is, as ttt2rick.ttt2.petexy.art.Layout asks for it."""
 
-    def __init__(self, picture, letters=None):
-        self.picture = art._float(picture_file.load(picture))
+    def __init__(self, fighter, letters=None):
+        self.picture = art._float(picture_file.load(fighter.picture_path()))
+        self.face, self.name, self.icon = fighter.face, fighter.name, fighter.icon + ('bust',)
         self.letters = letters
 
     def framed(self, place, w, h, mirror=False):
         """The picture scaled and moved so that the face sits at `place` in a w x h picture."""
         if (w, h) == ICON_SIZE:
-            place = ICON_PLACE
+            place = self.icon
         fx, fy, chin, _ = place
         img = self.picture
-        ex, ey, ec = FACE
+        ex, ey, ec = self.face
         if mirror:
             img = img[:, ::-1]
             ex = img.shape[1] - ex
@@ -65,9 +64,9 @@ class Sources:
         return out
 
     def title_name(self, w, h):
-        pic = self.letters.picture(NAME) if self.letters is not None else None
+        pic = self.letters.picture(self.name) if self.letters is not None else None
         if pic is None:
-            raise ValueError('no lettering learnt for %s' % NAME)
+            raise ValueError('no lettering learnt for %s' % self.name)
         if pic.shape[0] != h:
             pic = art._resize(pic, max(1, round(pic.shape[1] * h / pic.shape[0])), h)
         return pic
@@ -83,7 +82,7 @@ def codes_in(lm):
     return found
 
 
-def main(game, picture, out):
+def main(game, out):
     arc = Archives(game)
     idx = arc.indices[LAYOUTS]
     blobs = {}
@@ -93,47 +92,57 @@ def main(game, picture, out):
         if d[:4] == b'LMB\0' and arc.entry(LAYOUTS, i + 1)[:4] == b'NTXR':
             blobs[i] = d
             codes |= codes_in(lmb.Lmb.read(d))
-    codes = [art.DONOR] + sorted(codes - {art.DONOR, CODE})
-    sources = Sources(picture)
+    added = {f.code for f in ADDED}
+    codes = [art.DONOR] + sorted(codes - {art.DONOR} - added)
+    sources = [Sources(f) for f in ADDED]
+    letters = None
     for i, d in blobs.items():                  # the lettering, from the select screen's names
         if b'p1_chara_waku_' + art.DONOR.encode() in d:
-            lay = art.Layout(lmb.Lmb.read(d), xbox.read_nut(arc.entry(LAYOUTS, i + 1)), sources, art.DONOR, codes)
-            sources.letters = art.Letters.of_layout(lay)
-            if sources.letters is not None:
+            lay = art.Layout(lmb.Lmb.read(d), xbox.read_nut(arc.entry(LAYOUTS, i + 1)), sources[0], art.DONOR, codes)
+            letters = art.Letters.of_layout(lay)
+            if letters is not None:
                 break
-    name = sources.letters.picture(NAME) if sources.letters else None
-    if name is None:
-        raise ValueError('could not put %s together from the layouts\' names' % NAME)
     os.makedirs(out, exist_ok=True)
-    Image.fromarray(art._uint8(name)).save(os.path.join(out, 'layout_name.png'))
+    for f, src in zip(ADDED, sources):
+        src.letters = letters
+        name = letters.picture(f.name) if letters else None
+        if name is None:
+            raise ValueError('could not put %s together from the layouts\' names' % f.name)
+        Image.fromarray(art._uint8(name)).save(os.path.join(out, '%s_layout_name.png' % f.code))
     dest = os.path.join(out, 'files')
     os.makedirs(dest, exist_ok=True)
     count = 0
     for i, d in blobs.items():
         lm = lmb.Lmb.read(d)
-        if not any(art.code_label(s, CODE) for s in lm.symbols) and 'face_panel_' + CELL['anchor'] not in lm.symbols:
+        if not any(art.code_label(s, ADDED[0].code) for s in lm.symbols) and \
+                not any('face_panel_' + f.cell['anchor'] in lm.symbols for f in ADDED):
             continue
         textures = xbox.read_nut(arc.entry(LAYOUTS, i + 1))
-        layout = art.Layout(lm, textures, sources, CODE, codes, CELL)
-        layout.add_labels()
-        layout.add_cell()
-        if not layout.changed:
+        changed = False
+        for f, src in zip(ADDED, sources):     # one after the other on the same layout: the fighters' own pages
+            layout = art.Layout(lm, textures, src, f.code, codes, f.cell)
+            layout.add_labels()
+            layout.add_cell()
+            if not layout.changed:
+                continue
+            changed = True
+            pages = layout.pages()
+            for tex in pages:
+                for shape in lm.shapes():
+                    for g in shape.graphics:
+                        if g.atlas is None:
+                            g.atlas = tex['gidx']
+            textures['textures'] += pages
+        if not changed:
             continue
-        pages = layout.pages()
-        for tex in pages:
-            for shape in lm.shapes():
-                for g in shape.graphics:
-                    if g.atlas is None:
-                        g.atlas = tex['gidx']
-        textures['textures'] += pages
         key, tkey = idx[i][0], idx[i + 1][0]
         open(os.path.join(dest, 'key_%08x.bin' % key), 'wb').write(lm.write())
         open(os.path.join(dest, 'key_%08x.bin' % tkey), 'wb').write(xbox.write_nut(textures))
         count += 1
-    print('%s: Rick\'s labels in %d layouts' % (dest, count))
+    print('%s: %s\'s labels in %d layouts' % (dest, ' and '.join(f.name for f in ADDED), count))
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 4:
+    if len(sys.argv) != 3:
         sys.exit(__doc__)
     main(*sys.argv[1:])

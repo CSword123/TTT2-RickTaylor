@@ -2,8 +2,8 @@
 feet planted for her legs.
 
 python -m ttt2jen.motions <Rick's motion pack (key_52494332.bin)> <ric.bon> <jen.bon> <out dir>
-Writes <out dir>/key_4a454e32.bin ("JEN2", JEN_MOTIONS): recomp/runtime/rick_slot.cpp gives it to Rick's motion row
-under TTT2_JEN=1.
+Writes <out dir>/key_4a454e32.bin ("JEN2", JEN_MOTIONS): recomp/runtime/rick_slot.cpp gives it to Jennifer's motion
+row (ttt2jen.slot puts it in her slot's files).
 
 The game multiplies an animation's root position (channel 1) by the skeleton's scale, so Rick's moves on her already
 come out her size; but her legs are not his legs scaled (her thighs and shins are longer for her hips), and his stance
