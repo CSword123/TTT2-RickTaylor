@@ -41,6 +41,11 @@ from . import rick as rickconv
 RICK_NIF_DIR = 'characters/rick_havok/xbox360'
 IDLE = 'combatidle.hkx'
 GUARD = 'block.hkx'              # his held block: the animation of his standing guards (ttt2rick.convert.slot)
+# Splatterhouse's stance has his right side forward (shoulders 29 degrees that way), so player 1 showed his back and
+# player 2 his front, the other way round from TTT2's fighters (Marduk: left side forward, hips 55 degrees). Every
+# animation is turned STANCE_TURN more about the vertical (his attacks too, from the stance's turn), mirroring
+# that: hips about 58 degrees left side forward, as Marduk's.
+STANCE_TURN = np.radians(58.0)
 GUARD_FRAMES = 40                # at FPS; Marduk's standing guards go back to the stance at their frame 19
 GUARD_ANIM = 684                 # the guard's body animation, after Marduk's 684: moves play it as 0x4000 + 684
 MARDUK_MOTIONS = 0xC903BD27      # motion row 17's motion pack (684 animations; 0x75F7BE7E is row 18's, Jack-6)
@@ -187,7 +192,7 @@ class Retarget:
         # taken out, so Rick faces his opponent as the TTT2 skeleton does
         fwd = np.array([G[f, root_j, :3, :3] @ Gref[root_j, :3, :3].T @ [0, 0, 1] for f in range(len(local))])
         if yaw is None:
-            yaw = np.arctan2(fwd.mean(0)[0], fwd.mean(0)[2])
+            yaw = np.arctan2(fwd.mean(0)[0], fwd.mean(0)[2]) + STANCE_TURN
         yaws = np.broadcast_to(np.asarray(yaw, float), (len(local),))
         self.yaws[name] = float(np.mean(yaws))
         self.first_yaw = np.arctan2(fwd[0][0], fwd[0][2])
