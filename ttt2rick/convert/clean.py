@@ -11,6 +11,10 @@ white, black and yellow-green, the white mostly stained, so copying clean pixels
 takes green and blue away and leaves red about as bright as what it lies on, so a shoe stain keeps its own red as
 its brightness and gets the colour of the material most clean pixels around it are (within MAJORITY_RADIUS, each
 material filled on its own); on black the brightness is capped near the black's (thick blood is redder than it).
+
+clean_picture does the same for the picture of him (work/art/rick_taylor.png) that ttt2rick.convert.portrait makes
+his select portraits from: the blood there lies on his skin as well (the right arm all over, see-through smears on
+the chest) and on the shorts.
 """
 import os
 import sys
@@ -148,6 +152,62 @@ def print_dirt(rgb):
     lum = rgb.mean(-1, keepdims=True) / np.maximum(colour.mean(-1, keepdims=True), 1.0)
     fixed = colour * np.clip(lum, 0.25, 1.3)
     return np.clip(rgb * (1 - w[..., None]) + fixed * w[..., None] + 0.5, 0, 255).astype(np.uint8)
+
+
+# The picture: redness from which a pixel starts to be blood on his skin, and where it fully is (clean skin is about
+# 0.27, in shadow up to 0.33; the see-through smears 0.4 and more, fresh blood 0.7). The shorts' box (in its pixels):
+# there the colours around come from the denim (blue at least as high as red) unless the holes' skin is clearly most
+# around, and dark pixels with red over blue are dried blood. A stain keeps its red, lifted a little (blood darkens
+# what it lies on), as its brightness against the colour around; on the denim no brighter than it.
+PICTURE_RAMP = (0.33, 0.48)
+SHORTS = (130, 765, 740, 1250)
+LIFT = 1.12
+
+
+def picture_weight(rgba):
+    """0..1 per pixel of the picture: how much it is blood, grown two pixels (the smears' edges)."""
+    rgb = rgba[..., :3].astype(np.float32)
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    red = 1 - np.maximum(g, b) / np.maximum(r, 1.0)
+    w = np.clip((red - PICTURE_RAMP[0]) / (PICTURE_RAMP[1] - PICTURE_RAMP[0]), 0, 1) * np.clip((r - 14.0) / 12.0, 0, 1)
+    dark = np.clip((red - 0.35) / 0.1, 0, 1) * np.clip((r - b - 2.0) / 6.0, 0, 1) * (r >= g - 2) \
+        * np.clip((90.0 - (r + g + b) / 3) / 20.0, 0, 1)
+    w = np.where(shorts_mask(r.shape), np.maximum(w, dark), w) * (rgba[..., 3] > 0)
+    grown = w.copy()
+    for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0), (0, 2), (0, -2), (2, 0), (-2, 0)):
+        grown = np.maximum(grown, (0.8 if abs(dy + dx) == 1 else 0.5) * np.roll(w, (dy, dx), (0, 1)))
+    return grown
+
+
+def shorts_mask(shape):
+    x0, y0, x1, y1 = SHORTS
+    m = np.zeros(shape, bool)
+    m[y0:y1, x0:x1] = True
+    return m
+
+
+def clean_picture(picture):
+    """The picture (PIL RGBA) without its blood."""
+    a = np.asarray(picture.convert('RGBA'))
+    rgb = a[..., :3].astype(np.float32)
+    w = picture_weight(a)
+    shorts = shorts_mask(w.shape)
+    known = (w < 0.05) & (a[..., 3] == 255) & (rgb.mean(-1) > 10)
+    warm = (rgb[..., 0] > rgb[..., 2] + 12) & ~(shorts & (rgb.mean(-1) < 80))     # on the shorts only the holes' skin
+    masks = [known & warm, known & (rgb[..., 2] >= rgb[..., 0] - 3)]                # skin, denim
+    fills = [fill(rgb, m) for m in masks]
+    counts = np.stack([box(m.astype(np.float64), MAJORITY_RADIUS * 2) for m in masks])
+    under = np.where(shorts & ~(counts[0] > 2 * counts[1]), 1, 0)
+    colour = np.choose(under[..., None], [f for f, _ in fills])
+    # far from clean skin (the bloodied arm) its fill is an average of everything: there the skin's own tint (the
+    # clean skin's median) at the fill's red
+    skin = np.median(rgb[masks[0] & (rgb[..., 0] > 60)], 0)
+    far = ((1 - np.clip(fills[0][1] * 4, 0, 1)) * (under == 0))[..., None]
+    colour = colour * (1 - far) + skin / skin[0] * colour[..., :1] * far
+    k = np.clip(LIFT * rgb[..., 0] / np.maximum(colour[..., 0], 1.0), 0.25, np.where(under == 0, 1.5, 1.0))
+    out = a.copy()
+    out[..., :3] = np.clip(rgb * (1 - w[..., None]) + colour * k[..., None] * w[..., None] + 0.5, 0, 255).astype(np.uint8)
+    return Image.fromarray(out)
 
 
 def main():

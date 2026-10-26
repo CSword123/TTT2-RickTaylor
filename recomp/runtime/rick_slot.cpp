@@ -76,8 +76,8 @@ bool On()
     return on;
 }
 
-// TTT2_RICK_BLOOD=1: Rick's textures with Splatterhouse's blood on his jeans and shoes (ttt2rick.convert.clean
-// takes it off by default).
+// TTT2_RICK_BLOOD=1: Rick's textures with Splatterhouse's blood on his jeans and shoes, and his portraits with the
+// picture's (ttt2rick.convert.clean takes it off by default).
 bool Bloody()
 {
     static const bool on = [] { const char* e = std::getenv("TTT2_RICK_BLOOD"); return e && *e == '1'; }();
@@ -443,6 +443,16 @@ PPC_FUNC(sub_82554F08)                      // bitset (r3: {count, ..., bits}) s
     __imp__sub_82554F08(ctx, base);
 }
 
+// His portrait files (ttt2rick.convert.portrait): ric/<name>.nut, ric/<name>_blood.nut under TTT2_RICK_BLOOD=1.
+namespace {
+const char* PortraitFile(const char* name)
+{
+    static char path[64];
+    std::snprintf(path, sizeof(path), "ric/%s%s.nut", name, Bloody() ? "_blood" : "");
+    return path;
+}
+}
+
 // Portraits: the portrait code (sub_8262B9A0: screen r3, member r4) finds a member's UI row through sub_82276348
 // and its two pictures' keys in a table by row; for Rick, Marduk's row of the table holds Rick's keys meanwhile.
 namespace {
@@ -468,7 +478,7 @@ void RickLendPortraits(uint8_t* base)       // from sub_82276348 (id 64) inside 
     {
         const uint32_t at = kPortraitKeys + 4 * (2 * kDonorUiRow + s);
         g_lentKeys[s] = GRead32(base, at);
-        GWrite32(base, at, Crc(s ? "ric/portrait_2p.nut" : "ric/portrait_1p.nut"));
+        GWrite32(base, at, Crc(PortraitFile(s ? "portrait_2p" : "portrait_1p")));
     }
     g_lent = 1;
 }
@@ -483,9 +493,9 @@ PPC_FUNC(sub_82711E78)
     if (On()) std::fprintf(stderr, "[rick] portrait set %08X for id %u, lr %08X\n", obj, id, uint32_t(ctx.lr));
     __imp__sub_82711E78(ctx, base);
     if (!(On() && g.ready && id == kId)) return;
-    GWrite32(base, obj + 0, Crc("ric/portrait_1p.nut"));
+    GWrite32(base, obj + 0, Crc(PortraitFile("portrait_1p")));
     for (uint32_t off : { 12u, 24u, 36u })
-        if (GRead32(base, obj + off)) GWrite32(base, obj + off, Crc("ric/portrait_green.nut"));
+        if (GRead32(base, obj + off)) GWrite32(base, obj + off, Crc(PortraitFile("portrait_green")));
     std::fprintf(stderr, "[rick] portrait set %08X: Rick's\n", obj);
 }
 
@@ -581,7 +591,7 @@ PPC_FUNC(sub_8227CFC0)
 // The select screen's big portraits: sub_8262BEE0 (lister r3) lists container 6CCDFC60's frames, by UI row, in two
 // vectors {first, last, end} at +4 (player 1's frames) and +24 (player 2's); sub_8262B2D0 (lister r3, row r4, slot
 // r5: player * 2 + member) shows one. Rick's two frames follow the container's own (118, 119: ttt2rick.convert.
-// portrait); while a slot showing Rick is drawn, Marduk's row of its vector holds Rick's frame. Whose a slot is
+// portrait; the bloody two 120, 121); while a slot showing Rick is drawn, Marduk's row of its vector holds Rick's frame. Whose a slot is
 // comes from the select screen (sub_826409E0: screen r3): its player object (*(*(screen + 148) + 48 / 56)) holds
 // the members' records at +348 / +352, and before a pick the cursor's fighter id (sub_8227AE48(player)).
 namespace {
@@ -599,9 +609,10 @@ PPC_FUNC(sub_8262BEE0)
     Call(ctx, base, __imp__sub_82A827F8, { GRead32(base, lister + 44), g.scratch + 512 });
     const uint32_t entry = ctx.r3.u32, container = entry ? GRead32(base, entry) : 0;
     g_lister = 0;
-    if (!container || GRead32(base, container) < kPortraitFrame + 2) return;
+    const uint32_t first = kPortraitFrame + (Bloody() ? 2 : 0);
+    if (!container || GRead32(base, container) < first + 2) return;
     for (uint32_t p = 0; p < 2; ++p)
-        g_rickFrames[p] = container + GRead32(base, container + 4 + 8 * (kPortraitFrame + p));
+        g_rickFrames[p] = container + GRead32(base, container + 4 + 8 * (first + p));
     g_lister = lister;
     std::fprintf(stderr, "[rick] select portraits: lister %08X, container %08X\n", lister, container);
 }

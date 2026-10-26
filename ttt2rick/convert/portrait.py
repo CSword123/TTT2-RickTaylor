@@ -11,6 +11,10 @@ portrait_1p.png and portrait_2p.png, and the game's single-file form of each (a 
 rick_slot.cpp gives them to the screens that show Rick), and a green-framed one like the game's alternate
 (illustrated) portraits, portrait_green.png / ric/portrait_green.nut. The select screen's container gets Rick's two
 after its own (frames 118 and 119, CONTAINER_RICK; key_6ccdfc60.bin), which rick_slot.cpp shows for his row.
+
+The picture's blood is taken off (ttt2rick.convert.clean.clean_picture); each portrait is also made with it, named
+with _blood (portrait_1p_blood.png, ric/portrait_1p_blood.nut, ..., container frames 120 and 121), which
+rick_slot.cpp shows under TTT2_RICK_BLOOD=1.
 """
 import os
 import struct
@@ -23,6 +27,7 @@ from PIL import Image, ImageFilter
 from ..ttt2 import xbox
 from ..ttt2.archive import Archives
 from ..ttt2.petexy import nut
+from .clean import clean_picture
 
 CONTAINER = 0x6CCDFC60
 KEY_TABLE = 0x820CD408          # in the game image: 59 x {player 1 key, player 2 key}, by UI row
@@ -123,50 +128,48 @@ def compose(med, frame, inside, picture, mirror):
 def main(game, picture, out):
     arc = Archives(game)
     P = portraits(arc)
-    pic = Image.open(picture).convert('RGBA')
-    os.makedirs(out, exist_ok=True)
-    textures = []
-    for side in (0, 1):
-        med = np.median(P[side::2].astype(np.int16), 0).astype(np.uint8)
-        if side == 1:                   # the blue side is the red one mirrored: compose unmirrored, then flip
-            med = med[:, ::-1]
-        frame, inside = masks(med, side)
-        img = compose(med, frame, inside, pic, mirror=side == 1)
-        Image.fromarray(img).save(os.path.join(out, 'portrait_%dp.png' % (side + 1)))
-        textures.append(img)
+    bloody = Image.open(picture).convert('RGBA')
     folder = os.path.join(game, 'game') if os.path.isdir(os.path.join(game, 'game')) else game
     image = open(os.path.join(folder, 'tekken.img'), 'rb').read()
     G = green_portraits(arc, image)
-    med = np.median(G.astype(np.int16), 0).astype(np.uint8)
-    frame, inside = masks(med, 2)
-    green = compose(med, frame, inside, pic, mirror=False)
-    Image.fromarray(green).save(os.path.join(out, 'portrait_green.png'))
-    # the single files: Marduk's, its texture replaced
-    for side, img in enumerate(textures):
-        key = struct.unpack_from('>I', image, KEY_TABLE - 0x82000000 + 4 * (2 * DONOR_ROW + side))[0]
-        donor = xbox.read_nut(arc.read(key))
-        t = donor['textures'][0]
-        new = nut.make_texture(img, t['gidx'], t['fmt'], mips=len(t['mips']))
-        donor['textures'][0] = dict(t, mips=new['mips'])
-        path = os.path.join(out, 'files', 'ric', 'portrait_%dp.nut' % (side + 1))
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        open(path, 'wb').write(xbox.write_nut(donor))
-        if side == 0:
-            donor['textures'][0] = dict(t, mips=nut.make_texture(green, t['gidx'], t['fmt'], mips=len(t['mips']))['mips'])
-            open(os.path.join(out, 'files', 'ric', 'portrait_green.nut'), 'wb').write(xbox.write_nut(donor))
-    # the select screen's container: Rick's two frames after its own, made from Marduk's
     items = container_items(arc.read(CONTAINER))
     if len(items) != CONTAINER_RICK:
         raise ValueError('the portrait container has %d frames, not %d' % (len(items), CONTAINER_RICK))
-    for side, img in enumerate(textures):
-        donor = xbox.read_nut(items[2 * DONOR_ROW + side])
-        t = donor['textures'][0]
-        donor['textures'][0] = dict(t, mips=nut.make_texture(img, t['gidx'], t['fmt'], mips=len(t['mips']))['mips'])
-        items.append(xbox.write_nut(donor))
+    os.makedirs(os.path.join(out, 'files', 'ric'), exist_ok=True)
+    for pic, suffix in ((clean_picture(bloody), ''), (bloody, '_blood')):
+        textures = []
+        for side in (0, 1):
+            med = np.median(P[side::2].astype(np.int16), 0).astype(np.uint8)
+            if side == 1:               # the blue side is the red one mirrored: compose unmirrored, then flip
+                med = med[:, ::-1]
+            frame, inside = masks(med, side)
+            img = compose(med, frame, inside, pic, mirror=side == 1)
+            Image.fromarray(img).save(os.path.join(out, 'portrait_%dp%s.png' % (side + 1, suffix)))
+            textures.append(img)
+        med = np.median(G.astype(np.int16), 0).astype(np.uint8)
+        frame, inside = masks(med, 2)
+        green = compose(med, frame, inside, pic, mirror=False)
+        Image.fromarray(green).save(os.path.join(out, 'portrait_green%s.png' % suffix))
+        # the single files: Marduk's, its texture replaced
+        for side, img in enumerate(textures):
+            key = struct.unpack_from('>I', image, KEY_TABLE - 0x82000000 + 4 * (2 * DONOR_ROW + side))[0]
+            donor = xbox.read_nut(arc.read(key))
+            t = donor['textures'][0]
+            new = nut.make_texture(img, t['gidx'], t['fmt'], mips=len(t['mips']))
+            donor['textures'][0] = dict(t, mips=new['mips'])
+            open(os.path.join(out, 'files', 'ric', 'portrait_%dp%s.nut' % (side + 1, suffix)), 'wb').write(
+                xbox.write_nut(donor))
+            if side == 0:
+                donor['textures'][0] = dict(t, mips=nut.make_texture(green, t['gidx'], t['fmt'], mips=len(t['mips']))['mips'])
+                open(os.path.join(out, 'files', 'ric', 'portrait_green%s.nut' % suffix), 'wb').write(xbox.write_nut(donor))
+        # the select screen's container: Rick's two frames after its own (the bloody two after those), from Marduk's
+        for side, img in enumerate(textures):
+            donor = xbox.read_nut(items[2 * DONOR_ROW + side])
+            t = donor['textures'][0]
+            donor['textures'][0] = dict(t, mips=nut.make_texture(img, t['gidx'], t['fmt'], mips=len(t['mips']))['mips'])
+            items.append(xbox.write_nut(donor))
+        print(os.path.join(out, 'portrait_1p%s.png' % suffix), os.path.join(out, 'portrait_2p%s.png' % suffix))
     open(os.path.join(out, 'files', 'key_%08x.bin' % CONTAINER), 'wb').write(build_container(items))
-    print(os.path.join(out, 'portrait_1p.png'), os.path.join(out, 'portrait_2p.png'))
-    return textures
-
 
 if __name__ == '__main__':
     if len(sys.argv) != 4:
