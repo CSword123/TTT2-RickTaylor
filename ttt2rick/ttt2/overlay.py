@@ -5,8 +5,9 @@ patch for this.
 The first install copies the title update's own data100.ofs/.bin to `update/original/`; every install starts again
 from those, so installing twice does not stack, and `restore` puts them back.
 
-python -m ttt2rick.ttt2.overlay <game folder> install <dir>     # each file in <dir> under the key of its name
-                                                                (key_XXXXXXXX.bin: under that key)
+python -m ttt2rick.ttt2.overlay <game folder> install <dir> [<dir> ...]    # each file in each <dir> under the key
+                                                                          of its name (key_XXXXXXXX.bin: that key);
+                                                                          a later <dir>'s file wins over an earlier's
 python -m ttt2rick.ttt2.overlay <game folder> restore
 python -m ttt2rick.ttt2.overlay <game folder> list
 """
@@ -66,19 +67,20 @@ def build(ofs, bin_, files):
     return new_ofs, bytes(header) + bytes(payload)
 
 
-def install(game, src):
+def install(game, *srcs):
     update = _update_dir(game)
     orig = _originals(update)
     ofs, bin_ = (open(os.path.join(orig, n), 'rb').read() for n in NAMES)
     files = {}
-    names = sorted(os.path.relpath(os.path.join(r, f), src).replace(os.sep, '/')
-                   for r, _, fs in os.walk(src) for f in fs)
-    for name in names:                          # a file in a folder: under the key of its path (ric/alo/x.alo)
-        path = os.path.join(src, name)
-        if os.path.isfile(path):
-            key = int(name[4:12], 16) if re.fullmatch(r'key_[0-9a-fA-F]{8}\.bin', name) else key_of(name)
-            files[key] = open(path, 'rb').read()
-            print('%08x %10d  %s' % (key, len(files[key]), name))
+    for src in srcs:
+        names = sorted(os.path.relpath(os.path.join(r, f), src).replace(os.sep, '/')
+                       for r, _, fs in os.walk(src) for f in fs)
+        for name in names:                      # a file in a folder: under the key of its path (ric/alo/x.alo)
+            path = os.path.join(src, name)
+            if os.path.isfile(path):
+                key = int(name[4:12], 16) if re.fullmatch(r'key_[0-9a-fA-F]{8}\.bin', name) else key_of(name)
+                files[key] = open(path, 'rb').read()
+                print('%08x %10d  %s' % (key, len(files[key]), name))
     new_ofs, new_bin = build(ofs, bin_, files)
     for n, data in zip(NAMES, (new_ofs, new_bin)):
         tmp = os.path.join(update, n + '.tmp')
@@ -103,8 +105,8 @@ def main(argv):
     if len(argv) < 2:
         sys.exit(__doc__)
     game, cmd = argv[0], argv[1]
-    if cmd == 'install' and len(argv) == 3:
-        install(game, argv[2])
+    if cmd == 'install' and len(argv) >= 3:
+        install(game, *argv[2:])
     elif cmd == 'restore':
         restore(game)
     elif cmd == 'list':

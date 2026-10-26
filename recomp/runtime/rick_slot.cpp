@@ -48,6 +48,7 @@ constexpr uint32_t kGrids = 0x8200C8BC;                  // {cells, count} by mo
 constexpr uint32_t kRegistryPtr = 0x82EE0B5C;
 constexpr uint32_t kMovesetKey = 0x52494331;             // "RIC1": Marduk's moveset with Rick's id, from the overlay
 constexpr uint32_t kRickMotions = 0x52494332;            // "RIC2": Marduk's motion pack with Rick's stance
+constexpr uint32_t kJenMotions = 0x4A454E32;             // "JEN2": RIC2 with Jennifer's feet planted (ttt2jen.motions)
 constexpr uint32_t kDonorMoveList = 0x68A7CEF7;
 
 // Marduk's registry entries (sub_8244E618), replayed for "ric" with his own body files' keys.
@@ -81,6 +82,14 @@ bool On()
 bool Bloody()
 {
     static const bool on = [] { const char* e = std::getenv("TTT2_RICK_BLOOD"); return e && *e == '1'; }();
+    return on;
+}
+
+// TTT2_JEN=1 (with TTT2_RICK=1): Rick's slot gets Jennifer's body (jen.nud/.nut/.bon/.xml, ttt2jen.convert) and her
+// motion pack (JEN2), keeping his moves, name and portraits: a way to play her until she has a slot of her own.
+bool Jen()
+{
+    static const bool on = [] { const char* e = std::getenv("TTT2_JEN"); return e && *e == '1'; }();
     return on;
 }
 
@@ -148,7 +157,7 @@ void Prepare(uint8_t* base)
     if (kRow != 17)                          // a row of his own (not while he shares Marduk's)
     {
         const uint32_t row = kMotionRows + 12 * kRow;
-        GWrite32(base, row + 0, kRickMotions);
+        GWrite32(base, row + 0, Jen() ? kJenMotions : kRickMotions);
         GWrite32(base, row + 4, kMovesetKey);
         GWrite32(base, row + 8, kDonorMoveList);
     }
@@ -193,17 +202,18 @@ void Register(PPCContext& ctx, uint8_t* base, uint32_t master)
     for (const Reg& r : kDonorRegistry)
     {
         uint32_t k = r.key;
-        if (r.op == Op::File && r.type == 0) k = Crc("ric.nud");
-        if (r.op == Op::File && r.type == 1) k = Crc(Bloody() ? "ric_blood.nut" : "ric.nut");
-        if (r.op == Op::File && r.type == 2) k = Crc("ric.bon");
-        if (r.op == Op::File && r.type == 6) k = Crc("ric.xml");
+        if (r.op == Op::File && r.type == 0) k = Crc(Jen() ? "jen.nud" : "ric.nud");
+        if (r.op == Op::File && r.type == 1) k = Crc(Jen() ? "jen.nut" : Bloody() ? "ric_blood.nut" : "ric.nut");
+        if (r.op == Op::File && r.type == 2) k = Crc(Jen() ? "jen.bon" : "ric.bon");
+        if (r.op == Op::File && r.type == 6) k = Crc(Jen() ? "jen.xml" : "ric.xml");
         GWrite32(base, key, k);
         if (r.op == Op::Code) Call(ctx, base, sub_8247DDB0, { registry, regCode });
         else if (r.op == Op::File) Call(ctx, base, sub_8247A628, { registry, regCode, r.type, key });
         else Call(ctx, base, sub_82472220, { registry, regCode, r.type, key, r.index });
     }
     Call(ctx, base, sub_82336FC0, { regCode, 0 });
-    std::fprintf(stderr, "[rick] registered 'ric' (registry %08X, chara master %08X)\n", registry, master);
+    std::fprintf(stderr, "[rick] registered 'ric' (registry %08X, chara master %08X)%s\n", registry, master,
+                 Jen() ? ": Jennifer's body and motions (TTT2_JEN=1)" : "");
 }
 
 bool Ours(uint32_t record) { return On() && g.ready && (record == kRecord0 || record == kRecord0 + 1); }

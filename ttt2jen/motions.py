@@ -1,7 +1,9 @@
 """Jennifer's motion pack: Rick's (ttt2rick.convert.idle's, Marduk's with Rick's stance, guard and attacks), its
 feet planted for her legs.
 
-python -m ttt2jen.motions <Rick's motion pack (key_52494332.bin)> <ric.bon> <jen.bon> <out .bin>
+python -m ttt2jen.motions <Rick's motion pack (key_52494332.bin)> <ric.bon> <jen.bon> <out dir>
+Writes <out dir>/key_4a454e32.bin ("JEN2", JEN_MOTIONS): recomp/runtime/rick_slot.cpp gives it to Rick's motion row
+under TTT2_JEN=1.
 
 The game multiplies an animation's root position (channel 1) by the skeleton's scale, so Rick's moves on her already
 come out her size; but her legs are not his legs scaled (her thighs and shins are longer for her hips), and his stance
@@ -9,6 +11,7 @@ bends his knees: with his root height her soles went into the floor. In every Eu
 frame's root height is moved so that her lower ankle is as far over its planted height as Rick's is over his (scaled
 by the skeletons' scales): planted where his is planted. The compressed (0x64) animations, Marduk's own, are kept.
 """
+import os
 import sys
 
 import numpy as np
@@ -18,6 +21,7 @@ from ttt2rick.ttt2 import fk, xbox
 from ttt2rick.ttt2.petexy import animation, bone
 
 ANKLES = ('ASHI_L_jnt', 'ASHI_R_jnt')
+JEN_MOTIONS = 0x4A454E32        # "JEN2": rick_slot.cpp kJenMotions
 
 
 def ankles(bon, values):
@@ -60,6 +64,7 @@ def main(rick_pack, rick_bon, jen_bon, out):
     rick = xbox.read_bone(open(rick_bon, 'rb').read())
     jen = xbox.read_bone(open(jen_bon, 'rb').read())
     pack, done = refit(open(rick_pack, 'rb').read(), rick, jen)
+    out = os.path.join(out, 'key_%08x.bin' % JEN_MOTIONS)
     open(out, 'wb').write(pack)
     print('%s: %d animations refitted, %d bytes' % (out, done, len(pack)))
 
