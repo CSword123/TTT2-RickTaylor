@@ -9,12 +9,13 @@ his attacks' moves, ttt2rick.convert.attacks edit_moveset) and ric/alo/... (copi
 their textures: the title loads a fighter's effects as <code>/alo/<name>.alo, with its own code); with an art dir
 (ttt2rick.convert.portrait's out), also its files/ (Rick's portraits).
 """
+import copy
 import os
 import struct
 import sys
 
 from ..ttt2.archive import Archives
-from ..ttt2.petexy import itemdb, motbin
+from ..ttt2.petexy import bxml, itemdb, motbin
 from . import attacks, menus
 from .idle import GUARD_ANIM
 
@@ -26,6 +27,25 @@ MOTION_ROWS = 0x820A24B0                  # {motion pack, moveset, move list} by
 IMAGE_BASE = 0x82000000
 ALO_END = b'AL_EFFECT\0'
 BODY_ANIM = 0x4000                        # a move's animation id: 0x4000 + body animation (0x8000 +: the common ones)
+
+
+def item_database(donor_db):
+    """Marduk's item database for Rick, items and all (Customize): only the default costume's parts are left out
+    (itemdb.body_only's edit: Rick's body model has his own head, torso and jeans), every other item names Marduk's
+    parts, which rick_slot.cpp registers for Rick's code (his registry is Marduk's), and the joint offsets of the
+    props stay."""
+    info, offsets = bxml.parse(donor_db)[:2]
+    instances = []
+    for inst in info['children']:
+        data = [c for c in inst['children'] if c['tag'] == 'Data']
+        if data and dict(data[0]['attrs']).get('EquipType') == itemdb.DEFAULT_COSTUME:
+            inst = copy.deepcopy(inst)
+            for c in inst['children']:
+                if c['tag'] == 'Model' and not any(g['tag'] == 'EffectGroup' for g in c['children']):
+                    c['children'] = []
+            inst['children'] = [c for c in inst['children'] if c['tag'] != 'ModelBConditions']
+        instances.append(inst)
+    return bxml.write([dict(tag=info['tag'], attrs=info['attrs'], children=instances), offsets])
 
 
 def moveset(arc, image):
@@ -78,8 +98,9 @@ def main(game, rick, out, art=None):
         files['%s.%s' % (CODE, ext)] = open(os.path.join(rick, 'files', '%s.%s' % (DONOR, ext)), 'rb').read()
     files['%s_blood.nut' % CODE] = open(os.path.join(rick, 'files', '%s_blood.nut' % DONOR), 'rb').read()
     files['key_%08x.bin' % MOVESET_KEY] = moveset(arc, image)
-    if os.environ.get('RICK_CUSTOMIZE') == '1':     # Rick's cell in Customize: selecting him still hangs there
+    if os.environ.get('RICK_CUSTOMIZE') == '1':     # Rick in Customize, with Marduk's items (and his saved costumes)
         files.update(menus.files(arc))
+        files['%s.xml' % CODE] = item_database(arc.read_name(DONOR + '.xml'))
     fx, names = effects(arc)
     files.update(fx)
     if art:

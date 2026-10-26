@@ -9,10 +9,10 @@ goes there, x 18 is let in, and his cell skips lib::MNcheckFighterRelease (the u
 The edits keep every length (the container's offsets stay right): text is replaced by text of the same length,
 padded with spaces.
 
-Status (2026-10-25): with these edits the Customize cursor reaches Rick's cell, but choosing him starts his costume
-panel's load (sub_8272A5F0, a two-slot loader), which never finishes, and the menu stops taking input. So
-ttt2rick.convert.slot ships them only with RICK_CUSTOMIZE=1, until his costume data (item database, save entry) is
-there.
+Status (2026-10-26): with these edits, recomp/runtime/rick_slot.cpp's Customize hooks (the mode's per-fighter tables
+and maps know ids 0-62: Rick is customized as Marduk, shown as himself) and Marduk's item database for Rick
+(ttt2rick.convert.slot item_database), Rick can be chosen in Customize and dressed. Still opt-in (RICK_CUSTOMIZE=1):
+his costumes are Marduk's save entries, so what is put on him there is Marduk's too, in fights as well.
 """
 MENU_KEY = 0xB43EB78F            # title update (data100) menu file with CharacterSelectCursor
 RICK_ID = 64                     # rick_slot.cpp kId

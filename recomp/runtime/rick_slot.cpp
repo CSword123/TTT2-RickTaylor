@@ -1215,3 +1215,43 @@ PPC_FUNC(sub_82643A08)
     g_selectUpdateScreen = 0;
 }
 
+
+// Customize (its grid: ttt2rick.convert.menus, RICK_CUSTOMIZE=1). The mode's per-fighter data are by internal id, in
+// tables and maps that know ids 0-62; an added fighter is customized as Marduk (his items: ttt2rick.convert.slot
+// item_database gives Rick Marduk's whole item database), while the fighter shown is the added one (its record).
+// Each of these, given 64, asked for a key past the end of its table and waited for it for good.
+namespace {
+bool CustomizedAsDonor(uint32_t id) { return ById(id) != nullptr; }
+}
+
+extern "C" PPC_FUNC(__imp__sub_8272A5F0);
+PPC_FUNC(sub_8272A5F0)                      // the costume panel's loader (this, slot r4, fighter id r5 < 128)
+{
+    if (CustomizedAsDonor(ctx.r5.u32)) ctx.r5.u64 = kDonorId;
+    __imp__sub_8272A5F0(ctx, base);
+}
+
+extern "C" PPC_FUNC(__imp__sub_8227A078);
+PPC_FUNC(sub_8227A078)                      // id -> its costume panel pictures' key (63-entry table 0x8200C7D0; the
+{                                           // panel's IsBusy native waits until that file is loaded)
+    if (CustomizedAsDonor(ctx.r3.u32)) ctx.r3.u64 = kDonorId;
+    __imp__sub_8227A078(ctx, base);
+}
+
+extern "C" PPC_FUNC(__imp__sub_82717200);
+PPC_FUNC(sub_82717200)                      // (this, id r4): the fighter's Customize item list (data051), by a
+{                                           // 63-entry key table
+    if (CustomizedAsDonor(ctx.r4.u32)) ctx.r4.u64 = kDonorId;
+    __imp__sub_82717200(ctx, base);
+}
+
+extern "C" PPC_FUNC(__imp__sub_82728B28);
+PPC_FUNC(sub_82728B28)                      // (this, id r4): starts Customize's fighter data for the id (this +60):
+{                                           // its item maps are keyed by it, and its BXML (data052, sub_82725088)
+    if (CustomizedAsDonor(ctx.r4.u32))      // comes from a 63-entry key table by it
+    {
+        std::fprintf(stderr, "[added] Customize: id %u as Marduk's\n", ctx.r4.u32);
+        ctx.r4.u64 = kDonorId;
+    }
+    __imp__sub_82728B28(ctx, base);
+}

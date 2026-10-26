@@ -162,8 +162,15 @@ own. Checked: Arcade loss, continue, back to the select screen.
 Customize mode: its character grid is Xtal script, compiled from source at load: the title update's menu file
 0xB43EB78F defines global::CharacterSelectCursor (GetFighterID: a 3 x 22 table chr_line; IsFocusableCharacter refuses
 top-row x 0-2 and 18-21). ttt2rick.convert.menus puts Rick at x 18 (right of Violet) with same-length text edits, and
-the cursor reaches him, but choosing him hangs the menu in his costume panel's load (sub_8272A5F0), so it ships only
-with RICK_CUSTOMIZE=1. Its cursor position is mirrored in a menu variable (0x0086C4E4 in one run).
+the cursor reaches him. Choosing him hung in four places (2026-10-26), each a table or map of the mode by internal id
+that knows 0-62, so each now takes Marduk's id for an added fighter (rick_slot.cpp): the costume panel's loader
+(sub_8272A5F0, fighter id < 128), its pictures' key (sub_8227A078: 63 keys at 0x8200C7D0, NTXR files in data003 with
+the A/B costume images; the panel's IsBusy native, 0x82570530, waits until that file is loaded), the item list
+(sub_82717200: 63 keys built on the stack, data051, "<code>_<item label>" Info lists) and the fighter data's start
+(sub_82728B28: this +60 = id keys the item maps; sub_82725088 loads a BXML from data052 by another 63-key table). With
+these, and Marduk's item database for Rick, he can be dressed there; the fighter shown is Rick (his record). Ships
+with RICK_CUSTOMIZE=1 only: his costumes are Marduk's save entries. The menu natives are registered by name in
+sub_82572618 (name = r31 + offset from 0x8209EF60, function by lis/addi just before).
 
 Downed Rick could not be hit (fixed 2026-10-25): sub_822FB4F8 (player r3) takes a per-fighter body pointer by id
 from two 64-entry tables (0x82DD0A68; 0x82DD0B68 in down states 12-13) without a bound, so Rick's 64 read the second
