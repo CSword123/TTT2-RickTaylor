@@ -49,9 +49,15 @@ AIM = []
 FINGERS = (('thumb', 'Thumb', 'OYA'), ('index', 'Index', 'HITO'), ('mid', 'Middle', 'NAKA'),
            ('ring', 'Ring', 'KUSU'), ('pinky', 'Pinky', 'KO'))
 for S, s in (('L', 'l'), ('R', 'r')):
-    WEIGHTS.update({'%s_clavical_jnt' % s: 'SAKOTSU_%s_jnt' % S, '%s_shoulder_jnt' % s: 'KATA_0_%s_jnt' % S,
-                    '%s_shoulder_twist_jnt' % s: 'KATA_50_%s' % S, '%s_elbow_jnt' % s: 'UDE_%s_jnt' % S,
-                    '%s_forearm_01_jnt' % s: 'UDE_50_%s' % S, '%s_forearm_02_jnt' % s: 'UDE_50_%s' % S,
+    # her upper arm hangs on her shoulder's twist joint and her forearm on two twist joints: TTT2's own fighters weigh
+    # them on twist helpers along the limb instead (KATA_0 / KATA_50 / KATA_100, UDE / UDE_50 / UDE_100), which the
+    # game turns part of the way: along_limbs spreads her arms over them (all on KATA_50 alone her upper arm came out of
+    # its sleeve in game; on the animated KATA alone her shoulder tore when Rick's stance pulls the elbows back)
+    # (her one clavicle joint covers the shoulder's top too: on the clavicle itself, which the arm hangs from; on the
+    # chest's SAKOTSU_0, as Rick's inner clavicle joint is, the sleeve's top stayed behind when the arm swung back)
+    WEIGHTS.update({'%s_clavical_jnt' % s: 'SAKOTSU_%s_jnt' % S, '%s_shoulder_jnt' % s: 'KATA_%s_jnt' % S,
+                    '%s_shoulder_twist_jnt' % s: 'KATA_%s_jnt' % S, '%s_elbow_jnt' % s: 'UDE_%s_jnt' % S,
+                    '%s_forearm_01_jnt' % s: 'UDE_%s_jnt' % S, '%s_forearm_02_jnt' % s: 'UDE_%s_jnt' % S,
                     '%s_wrist_jnt' % s: 'TE_%s_jnt' % S, '%s_weapon_jnt' % s: 'TE_%s_jnt' % S,
                     '%s_thi_jnt' % s: 'MOMO_0_%s' % S, '%s_shin_jnt' % s: 'SUNE_%s' % S,
                     '%s_foot_jnt' % s: 'ASHI_%s_jnt' % S, '%s_navicular_jnt' % s: 'TSUMASAKI_%s_jnt' % S})
@@ -74,6 +80,11 @@ for S, s in (('L', 'l'), ('R', 'r')):
                         ('%s%d_%s' % (ttt2, 4 - k, S), '%s%d_%s' % (ttt2, 3 - k, S))))
 ROLL = {'%s_wrist_jnt' % s: (('%s_indexFinger_01_jnt' % S, '%s_pinkyFinger_01_jnt' % S),
                              ('HITO3_%s' % S, 'KO3_%s' % S)) for S, s in (('L', 'l'), ('R', 'r'))}
+# a limb bone's weights spread along it over its twist helpers: bone -> (the next joint, helpers at 0, 0.5, 1)
+ALONG = {}
+for S in 'LR':
+    ALONG['KATA_%s_jnt' % S] = ('UDE_%s_jnt' % S, ('KATA_0_%s_jnt' % S, 'KATA_50_%s' % S, 'KATA_100_%s' % S))
+    ALONG['UDE_%s_jnt' % S] = ('TE_%s_jnt' % S, ('UDE_%s_jnt' % S, 'UDE_50_%s' % S, 'UDE_100_%s' % S))
 FOOT_JOINTS = ('l_foot_jnt', 'r_foot_jnt', 'l_navicular_jnt', 'r_navicular_jnt')
 
 
@@ -94,6 +105,33 @@ def untiled(uv, tris):
     for col in range(3):
         out[tris[:, col]] = uv[tris[:, col]] - tile
     return out
+
+
+def along_limbs(pos, bones, wts, skel_world, bidx):
+    """Weights on ALONG's limb bones spread over its helpers by where the vertex lies between the bone and the next
+    joint (linearly between the helpers at 0, 0.5 and 1); the four heaviest kept, normalized."""
+    names = {i: n for n, i in bidx.items()}
+    out_b, out_w = np.zeros_like(bones), np.zeros_like(wts)
+    for v in range(len(pos)):
+        acc = {}
+        for b, w in zip(bones[v], wts[v]):
+            if w <= 0:
+                continue
+            limb = ALONG.get(names[int(b)])
+            if limb is None:
+                acc[int(b)] = acc.get(int(b), 0.0) + float(w)
+                continue
+            a, c = skel_world[int(b)][:3, 3], skel_world[bidx[limb[0]]][:3, 3]
+            t = float(np.clip((pos[v] - a) @ (c - a) / ((c - a) @ (c - a)), 0, 1))
+            lo, f = (0, t / 0.5) if t < 0.5 else (1, (t - 0.5) / 0.5)
+            for h, share in ((limb[1][lo], 1 - f), (limb[1][lo + 1], f)):
+                if share > 0:
+                    acc[bidx[h]] = acc.get(bidx[h], 0.0) + float(w) * share
+        top = sorted(acc.items(), key=lambda x: -x[1])[:4]
+        total = sum(w for _, w in top)
+        for q in range(4):
+            out_b[v, q], out_w[v, q] = (top[q][0], top[q][1] / total) if q < len(top) else (top[0][0], 0.0)
+    return out_b, out_w
 
 
 def split_skin(tris, uv, texture):
@@ -128,6 +166,7 @@ def convert(game, jen_dir, out):
     bidx = {n: i for i, n in enumerate(dnames)}
     jmap = np.array([bidx[weight_target(n)] for n in names])
 
+    skel_world = bone.world_matrices(skel)
     tmpl = rc.templates(arc)
     face = rc.skin_median(np.asarray(Image.open(os.path.join(tex_dir, FACE_TEXTURE.replace('.dds', '.png')))
                                      .convert('RGBA')))
@@ -169,7 +208,7 @@ def convert(game, jen_dir, out):
                            data['mesh%d_weights' % k].astype(np.float64))
         tris = data['mesh%d_triangles' % k]
         uv = untiled(data['mesh%d_uv' % k].astype(np.float64), tris)
-        bones, wts = weights(k)
+        bones, wts = along_limbs(pos, *weights(k), skel_world, bidx)
         tex = m['textures']['base']
         base = os.path.join(tex_dir, tex.replace('.dds', '.png'))
         if tex in OVERLAY_TEXTURES:
