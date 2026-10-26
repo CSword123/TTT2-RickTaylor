@@ -17,23 +17,25 @@ hitboxes are on the bones, they missed anything not pinned to a wall. So each at
 striking hand points straight ahead on its first active frame, the turn eased in over the windup and out again over
 the recovery, so it still starts and ends in his stance.
 
-The X button's chain in Splatterhouse (statemachines/player_initialrick/playercomboattackstates.smf: Idle ->
-AttackPunchLeft -> AttackPunchRight -> ...) starts with a left then a right haymaker, which lunge far more than a jab:
-they are his b+1 and b+1,2 (Marduk's Va_lp00B, and Va_ttlprp, which its 2 cancels into); the chain's 360Punch
-(atk_punch_360, left arm) is his b+1,1, a move of his own copied from Va_ttlprp. His 1 and 1,2 stay Marduk's.
+The X button's chain in Splatterhouse (statemachines/player_initialrick/playercomboattackstates.smf) runs a haymaker,
+a backhand with the same arm (AttackBackhandLeft/Right) and the 360 punch (360Punch, atk_punch_360, left arm). Its
+right-hand chain is his 2, 2,2, 2,2,1 (the user's call, 2026-10-26: the right hand on 2):
+- 2: Marduk's 2 (Va_rp00) playing the right haymaker (atk_punchr_high), at i12 (Marduk's: i10);
+- 2,2: a move of his own (Va_rpbh_ric, a copy of Marduk's right follow-up Va_ttlprp) playing the right backhand
+  (atk_backhand_r), from 2's frame FOLLOW_UP_FRAME, i17;
+- 2,2,1: the spin (Va_ttlplp_ric), from 2,2's frame SPIN_FRAME, i20.
+2 and 2,2 snap the head back standing (REACTIONS), so the next hit combos; the spin crumples. b+1 and its strings are
+Marduk's own again.
 
-Timing (STARTUP; edit_moveset moves each move's active frames, end and frame-keyed extra properties by the same
-amount, so only the startup changes): b+1 is i16, the left haymaker's own speed in Splatterhouse (Marduk's: i21;
-Splatterhouse's hit volume is on from about i4, the fist out at 16). Its second swings come out at FOLLOW_UP_FRAME,
-once the left one has mostly swung back (Marduk's came out at 22, right after the hit), and are i20 (the right
-haymaker's own windup; the spin's sped up 1.4x): they hit 32 frames after b+1 does.
+The 3+4 crouch is Splatterhouse's RT crouch (ttt2rick.convert.idle CROUCH), and its moves Splatterhouse's moves off it
+(playersprintattackstates.smf): 1 is the running ram (RT+Y: RunRam_Begin -> RunRam_Loop -> runram_outro, the left
+shoulder first), on a copy of Marduk's crouch tackle (Va_awtac, his f+1 from the crouch); 2 is the sweeping punch
+(RT+X: Sprint_AtkPunch, runram_roundpunch, right fist), on a copy of his crouch f+2 (Va_sprp); 1+2 stays Marduk's
+takedown (Va_spear, into his mount: Va_spear01, the opponent's Mt_ moves), its lunge playing Splatterhouse's (RT+B:
+DashAttackGrab, tackle_miss), carried as far as Marduk's (1821 units at its contact frame 24), so the takedown,
+which plays Marduk's own animations in step with the opponent's, starts where his would.
 
-Hit reactions (REACTIONS): Marduk's b+1 and b+1,2 leave the opponent crouched (sDm_KAKLcrG, 43 frames, ending in
-the crouch), under the high follow-ups. b+1 and b+1,2 now snap the head back standing (sDm_Lhd00G / sDm_Rhd40GY,
-left and right, 40 frames, standing on counter hit too, no pushback), so the follow-ups combo on hit with 8 frames
-to spare; the heavy crouching crumple is b+1,1's finisher (copied from Va_ttlprp before the change).
-
-The spin (b+1,1) gets Marduk's b+2's (Va_rp00B) two properties of its own (EXTRA): 0x81aa, which only that move has,
+The spin gets Marduk's b+2's (Va_rp00B) two properties of its own (EXTRA): 0x81aa, which only that move has,
 on 12 frames before its hit and off 2 after it (the faint white streak along the swing), and 0x80f8 = 2 from the
 start (on 18 of his moves, mostly sidestep attacks and tag-in jumps: probably how it turns to the opponent).
 
@@ -57,48 +59,65 @@ import numpy as np
 from ..splatterhouse import hkx
 
 BLEND_IN = 6                     # frames at 60 fps from the stance's pose into an attack
-# forward travel (ground displacement units): Marduk's dash 1429, his own b+1 1813 and b+1,2 2080
-FIRST, FOLLOW_UP = 700.0, 900.0
-FOLLOW_UP_FRAME = 28             # b+1's frame from which its second swings come out (Marduk's: 22)
-# first and last active frames (Marduk's: 21-22, 32-32): the follow-ups' fists sweep through, out furthest only on
-# frame 20 (1534 units, 1166 on 19, 1432 on 21), so they stay out through 22 or a b+1 landed from further off whiffs
-# b+1,2 is i17 (the 2 a little faster, as the user asked): it hits 29 frames after b+1, inside its 40-frame reaction.
-# The spin is copied from Va_ttlprp after this, so it gets its own i20 back (STARTUP_NEW).
-STARTUP = {'Va_lp00B': (16, 17), 'Va_ttlprp': (17, 19)}
-STARTUP_NEW = {'Va_ttlplp_ric': (20, 22), 'Va_rpst_ric': (24, 25)}
-# damage of every hit-condition entry (Marduk's: b+1 17, b+1,2 10): the spin, the string's finisher, does more
-DAMAGE = {'Va_ttlplp_ric': 16, 'Va_rpst_ric': 30}
+# forward travel (ground displacement units, by the hit): Marduk's dash 1429; his 2 443, crouch f+1 784, crouch f+2
+# 767, takedown lunge 1821 (at its contact frame 24)
+PUNCH, FOLLOW_UP = 600.0, 600.0
+RAM, SWEEP, LUNGE = 1500.0, 900.0, 2020.0   # the lunge's ease is 90% there by its contact frame: 1821
+FOLLOW_UP_FRAME = 24             # 2's frame from which 2,2 comes out (12 after its hit)
+SPIN_FRAME = 28                  # 2,2's frame from which the spin comes out (11 after its hit)
+# 2 is i12; 2,2 i17 from the cancel, so it hits 29 frames after 2, inside 2's 40-frame standing reaction; the spin
+# i20, 31 after 2,2 (its reaction 40 frames too). The ram's shoulder stays out from 16 to 26 (a charge: at 16-19
+# alone it was still closing in, and whiffed in game)
+STARTUP = {'Va_rp00': (12, 13)}
+STARTUP_NEW = {'Va_rpbh_ric': (17, 19), 'Va_ttlplp_ric': (20, 22), 'Va_rpst_ric': (24, 25), 'Va_ram_ric': (16, 26),
+               'Va_sweep_ric': (18, 19)}
+# damage of every hit-condition entry (Marduk's 2 10, Va_ttlprp 10, crouch f+1 16, f+2 22): the finishers do more
+DAMAGE = {'Va_ttlplp_ric': 16, 'Va_rpst_ric': 30, 'Va_ram_ric': 18}
+# the frame a move ends (back to the stance), where its animation is longer than the copied move (Va_awtac ends at
+# 40, Va_sprp at 50): the ram's outro and the sweep's follow-through play out
+END = {'Va_ram_ric': 60, 'Va_sweep_ric': 58}
 # automatic cancels left out of a copied move: Marduk's own variants of it, with his animation (Va_rpst00 goes to
-# Va_rpst00_H on hit (requirement 46), an elbow, and to Va_rpst00Chg on a tag change)
-DROP = {'Va_rpst_ric': ['Va_rpst00_H', 'Va_rpst00Chg']}
+# Va_rpst00_H on hit (requirement 46), an elbow, and to Va_rpst00Chg on a tag change; Va_awtac has a 2 follow-up)
+DROP = {'Va_rpst_ric': ['Va_rpst00_H', 'Va_rpst00Chg'], 'Va_ram_ric': ['Va_awtacrp']}
 # Marduk's body animation -> (Splatterhouse animation, its frame of full extension at 30 fps, Marduk's move that
 # plays it, its first active frame at 60 fps, frames: Marduk's less the startup taken off; the striking hand, the
 # forward travel)
 ATTACKS = {
-    0xDD: ('atk_punchl_high.hkx', 10, 'Va_lp00B', 16, 75, 'L', FIRST),       # b+1: AttackPunchLeftHigh (80)
-    0xDE: ('atk_punchr_high.hkx', 10, 'Va_ttlprp', 17, 70, 'R', FOLLOW_UP),  # b+1,2: AttackPunchRightHigh (85)
     # b+2: HeavyRelease, an overhead hammer: its fist is above his head until Havok frame 13 and comes down in front
     # of him by 14, so the hit is on the downswing (13.7), with a lunge like Marduk's own b+2's
     0x11E: ('atk_arcpunch.hkx', 13.7, 'Va_rp00B', 22, 80, 'R', 1100.0),
 }
 HOLD_FRAME = 12                  # b+2's frame at which 2 still held makes it the charged smash
 # appended body animations, in order from SPIN_ANIM: (Splatterhouse animation, peak, frames, first active frame,
-# the striking hand, the forward travel)
+# the striking hand (None: not aimed), the forward travel, where its blend-in starts: None (the stance), 'crouch'
+# (the 3+4 crouch) or (an ATTACKS index, its frame))
 SPIN_ANIM = 685                  # after the guard (ttt2rick.convert.idle GUARD_ANIM 684)
-# ... and where its blend-in starts: None (the stance) or (an ATTACKS index, its frame)
-NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20, 'L', FOLLOW_UP, None),           # b+1,1: 360Punch (peak 14)
-               ('atk_punchdown_r.hkx', 15, 79, 24, 'R', FOLLOW_UP, (0x11E, 12))]  # b+2 held: HeavyPunch
-# Rick's own moves: (name, the move copied, its body animation, hitbox from, after move, button)
-LEFT_ARM = 'Va_lp00B'            # hitbox 0d0c: left hand and forearm (right: 0908)
-# ... and its cancel's frame (None: where the copied move's own cancel from `after` is)
-NEW_MOVES = [('Va_ttlplp_ric', 'Va_ttlprp', SPIN_ANIM, LEFT_ARM, 'Va_lp00B', 0x40000001, None),
-             ('Va_rpst_ric', 'Va_rpst00', SPIN_ANIM + 1, 'Va_rp00B', 'Va_rp00B', 0x2 << 9, HOLD_FRAME)]
-DELAYED = [('Va_lp00B', 'Va_ttlprp')]                   # cancels that wait for FOLLOW_UP_FRAME
+RAM_FILES = 'runram_begin.hkx+runram_loop.hkx+runram_outro.hkx'   # 15 + 16 + 26 frames: the shoulder out by 18
+NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20, 'L', FOLLOW_UP, None),           # 685 2,2,1: 360Punch (peak 14)
+               ('atk_punchdown_r.hkx', 15, 79, 24, 'R', FOLLOW_UP, (0x11E, 12)),  # 686 b+2 held: HeavyPunch
+               ('atk_punchr_high.hkx', 10, 44, 12, 'R', PUNCH, None),             # 687 2: AttackPunchRightHigh
+               ('atk_backhand_r.hkx', 11, 66, 17, 'R', FOLLOW_UP, None),          # 688 2,2: AttackBackhandRight (whips through at 11)
+               (RAM_FILES, 18, 64, 16, None, RAM, 'crouch'),                      # 689 3+4,1: RT+Y, the running ram
+               ('runram_roundpunch.hkx', 15, 62, 18, 'R', SWEEP, 'crouch'),      # 690 3+4,2: RT+X, Sprint_AtkPunch
+               ('tackle_miss.hkx', 12, 90, 24, None, LUNGE, 'crouch')]           # 691 3+4,1+2: RT+B, the lunge
+# Marduk's moves given an appended animation (by its index in NEW_ATTACKS)
+ANIMS = {'Va_rp00': SPIN_ANIM + 2, 'Va_spear': SPIN_ANIM + 6}
+# Rick's own moves: (name, the move copied, its body animation, hitbox from, after moves, button, the cancel's frame:
+# None: where the copied move's own cancel from `after` is; 'like': as the first `after` row of LIKE's)
+LEFT_ARM = 'Va_lp00B'            # hitbox 0d0c: left hand and forearm (right: 0908, Va_rp00's 09)
+CROUCH_MOVES = ['Va_awKAM_st', 'Va_awKAM_', 'Va_awKAM_g', 'Va_awKAM_L', 'Va_awKAM_R']   # the crouch's own lists
+LIKE = 'Va_spear'                # the crouch's moves come out when its 1+2 does (frame 10 in, 28 in a sidestep)
+NEW_MOVES = [('Va_rpbh_ric', 'Va_ttlprp', SPIN_ANIM + 3, 'Va_rp00', ['Va_rp00'], 0x40000002, FOLLOW_UP_FRAME),
+             ('Va_ttlplp_ric', 'Va_ttlprp', SPIN_ANIM, LEFT_ARM, ['Va_rpbh_ric'], 0x40000001, SPIN_FRAME),
+             ('Va_rpst_ric', 'Va_rpst00', SPIN_ANIM + 1, 'Va_rp00B', ['Va_rp00B'], 0x2 << 9, HOLD_FRAME),
+             ('Va_ram_ric', 'Va_awtac', SPIN_ANIM + 4, 'Va_awtac', CROUCH_MOVES, 0x40000001, 'like'),
+             ('Va_sweep_ric', 'Va_sprp', SPIN_ANIM + 5, 'Va_rp00', CROUCH_MOVES, 0x40000002, 'like')]
 # move -> extra properties added, (frame, id, value); frame 0x8001: from the move's start (as Marduk's b+2 has them)
 EXTRA = {'Va_ttlplp_ric': [(0x8001, 0x80f8, 2), (8, 0x81aa, 1), (24, 0x81aa, 0)]}
 BOUND = ['Va_ttlplp_ric']        # moves that bound an airborne opponent (and so can be Tag Assault cancelled)
-# move -> (its reaction to replace, the new one), by the reactions' normal-hit (default) moves
-REACTIONS = {'Va_lp00B': ('sDm_KAKLcrG', 'sDm_Lhd00G'), 'Va_ttlprp': ('sDm_KAKLcrG', 'sDm_Rhd40GY')}
+# move -> (its reaction to replace, the new one), by the reactions' normal-hit (default) moves: 2 and 2,2 leave the
+# opponent standing for 40 frames (the right haymaker snaps the head to the right, the backhand to the left)
+REACTIONS = {'Va_rp00': ('sDm_KAOR27G_Va', 'sDm_Rhd40GY'), 'Va_rpbh_ric': ('sDm_KAKLcrG', 'sDm_Lhd00G')}
 
 
 def retime(frames_src, peak, frames_dst, impact):
@@ -130,11 +149,15 @@ def aim(frames, impact):
 
 
 def _attack(retarget, start, name, peak, frames, impact, hand, forward, stance):
-    """(raw animation, Havok joints, TTT2 joints) of an attack: retimed, turned to aim, carried forward."""
-    an = hkx.animation(hkx.Packfile(open(os.path.join(retarget.folder, name), 'rb').read()))
+    """(raw animation, Havok joints, TTT2 joints) of an attack: retimed, turned to aim (unless hand is None: a ram, a
+    lunge, led by the body), carried forward."""
+    from .idle import load_animation
+    an = load_animation(retarget.folder, name, retarget.sk)
     times = retime(an['frames'], peak, frames, impact)
     base = retarget.yaws[stance]
     kw = dict(times=times, blend_from=(start, BLEND_IN), ground=travel(frames, impact, forward))
+    if hand is None:
+        return retarget(name, yaw=base, **kw)
     names = [n[4:] if n.startswith('cha:') else n for n in retarget.bon['names']]
     h = names.index('TE_%s_jnt' % hand)
     _, _, tp = retarget(name, yaw=base, **kw)
@@ -148,9 +171,8 @@ def _attack(retarget, start, name, peak, frames, impact, hand, forward, stance):
 
 
 def _stance_pose(retarget, stance):
-    from .idle import FPS, sample
-    return sample(hkx.animation(hkx.Packfile(open(os.path.join(retarget.folder, stance), 'rb').read())),
-                  retarget.sk, FPS)[0]
+    from .idle import FPS, load_animation, sample
+    return sample(load_animation(retarget.folder, stance, retarget.sk), retarget.sk, FPS)[0]
 
 
 def with_attacks(pack, retarget, stance):
@@ -175,7 +197,10 @@ def with_new_attacks(pack, retarget, stance):
     shown = {}
     for k, (name, peak, frames, impact, hand, forward, origin) in enumerate(NEW_ATTACKS):
         pose = start
-        if origin is not None:                          # the pose of an ATTACKS animation at one of its frames
+        if origin == 'crouch':                          # out of the 3+4 crouch
+            from .idle import CROUCH
+            pose = _stance_pose(retarget, CROUCH)
+        elif origin is not None:                        # the pose of an ATTACKS animation at one of its frames
             from .idle import sample
             src, src_peak, _, src_impact, src_frames = ATTACKS[origin[0]][:5]
             an = hkx.animation(hkx.Packfile(open(os.path.join(retarget.folder, src), 'rb').read()))
@@ -192,10 +217,9 @@ def with_new_attacks(pack, retarget, stance):
 
 
 def edit_moveset(m):
-    """Rick's moveset (a motbin.read of RIC1, its other changes made) rebuilt with NEW_MOVES and DELAYED: each new
-    move appended (a copy, its own name, body animation and hitbox), and each move that gets a new follow-up given a
-    copy of its cancel list at the end of the table with the follow-up next to the move it was copied from, so no
-    index moves."""
+    """Rick's moveset (a motbin.read of RIC1, its other changes made) rebuilt with ANIMS and NEW_MOVES: each new move
+    appended (a copy, its own name, body animation and hitbox), and each move that gets a new follow-up given a copy
+    of its cancel list at the end of the table with the follow-up in it, so no index moves."""
     from ..ttt2.petexy import motbin
     moves, cancels = m.tables['moves'], m.tables['cancels']
     names = [m.move_name(i) for i in range(len(moves))]
@@ -225,12 +249,13 @@ def edit_moveset(m):
         print('%s: i%d (%d frames earlier, its end too)' % (name, first, d))
     for name, (first, last) in STARTUP.items():
         startup(names.index(name), name, first, last)
-    for src, dst in DELAYED:
-        for r in cancel_list(names.index(src)):
-            if r['move_id'] == names.index(dst):
-                r['win_end'] = r['start_frame'] = FOLLOW_UP_FRAME
+    for name, anim in ANIMS.items():
+        moves[names.index(name)]['anim'] = 0x4000 + anim
+        print('%s: body animation %d' % (name, anim))
     made = {}                                       # new move name -> its index
-    for name, copy, anim, hitbox_from, after, button, frame in NEW_MOVES:
+    template = None                                 # the last button cancel row seen
+    index = lambda n: made[n] if n in made else names.index(n)
+    for name, copy, anim, hitbox_from, afters, button, frame in NEW_MOVES:
         move = dict(moves[names.index(copy)])
         move['name'] = len(strings)
         strings += name.encode('latin1') + b'\0'
@@ -238,22 +263,41 @@ def edit_moveset(m):
         move['hitbox'] = moves[names.index(hitbox_from)]['hitbox']
         moves.append(move)
         made[name] = len(moves) - 1
-        i = names.index(after)
-        rows = [dict(r) for r in cancel_list(i)]
-        if frame is None:
-            like = next(r for r in rows if r['move_id'] == names.index(copy))
-            rows.insert(rows.index(like), dict(like, button=button, move_id=len(moves) - 1))
-        else:                                       # like the list's button rows (always, extradata 386), at frame
-            like = dict(next(r for r in rows if r['button'] & 0x40000000), win_start=frame, win_end=frame,
-                        start_frame=frame)
-            rows.insert(rows.index(next(r for r in rows if r['button'] & 0x40000000)),
-                        dict(like, direction=0, button=button, move_id=len(moves) - 1))
-        moves[i]['cancel'] = len(cancels)
-        cancels.extend(rows)
-        print('%s (move %d, body animation %d) after %s on button %#x, from frame %d' % (
-            name, len(moves) - 1, anim, after, button, like['start_frame']))
+        for after in afters:
+            i = index(after)
+            rows = [dict(r) for r in cancel_list(i)]
+            if frame is None:
+                like = next(r for r in rows if r['move_id'] == names.index(copy))
+                rows.insert(rows.index(like), dict(like, button=button, move_id=len(moves) - 1))
+            elif frame == 'like':                   # as the list's row for LIKE (its window, its requirement), after
+                like = next(r for r in rows if r['move_id'] < 0x8000 and r['move_id'] == names.index(LIKE))
+                # it and the directional presses after it (dir 0, any direction, is matched in order: Marduk lists
+                # 1+2 before 1, f+1 before 1), before any other neutral press and the sidestep and end rows
+                at = rows.index(like) + 1
+                while at < len(rows) and rows[at]['direction'] < 0x8000 and not (
+                        rows[at]['direction'] == 0 and rows[at]['button'] & 3):
+                    at += 1
+                rows.insert(at, dict(like, button=button, move_id=len(moves) - 1))
+            else:                                   # like the list's button rows (always, extradata 386), at frame;
+                first = next((r for r in rows if r['button'] & 0x40000000), None)   # a list with none (2,2's: the
+                if first is not None:                                               # move's end only) as the last
+                    template = first
+                # a press is taken from the move's start and comes out at `frame` (Marduk's strings: win 1-28, start
+                # 28); a held button (no 0x40000000) is checked at that frame only
+                like = dict(template, win_start=1 if button & 0x40000000 else frame, win_end=frame, start_frame=frame)
+                rows.insert(rows.index(first) if first is not None else len(rows) - 1,
+                            dict(like, direction=0, button=button, move_id=len(moves) - 1))
+            moves[i]['cancel'] = len(cancels)
+            cancels.extend(rows)
+            print('%s (move %d, body animation %d) after %s on button %#x, from frame %d' % (
+                name, len(moves) - 1, anim, after, button, like['start_frame']))
     for name, (first, last) in STARTUP_NEW.items():
         startup(made[name], name, first, last)
+    for name, end in END.items():
+        for r in own(index(name), 'cancel', 'cancels', lambda r: r['direction'] == 0x8000):
+            if r['direction'] == 0x8000:
+                r['win_start'] = r['start_frame'] = end
+        print('%s: ends at frame %d' % (name, end))
     for name, drop in DROP.items():
         i = made[name] if name in made else names.index(name)
         rows = [dict(r) for r in cancel_list(i) if not (r['move_id'] < len(names) and names[r['move_id']] in drop)]
@@ -264,7 +308,7 @@ def edit_moveset(m):
     reactions = m.tables['reactions']
     hit_end = lambda h: h['req'] is None or m.tables['requirements'][h['req']]['condition'] == 690   # no condition
     for name, (old, new) in REACTIONS.items():
-        i = names.index(name)
+        i = index(name)
         to = next(k for k, r in enumerate(reactions) if r['default'] is not None and r['default'] < len(names)
                   and names[r['default']] == new)
         for h in own(i, 'hit_condition', 'hit_conditions', hit_end):

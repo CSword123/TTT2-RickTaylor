@@ -19,7 +19,8 @@ python -m ttt2rick.convert.idle <game folder> <Splatterhouse data folder> <conve
 4. Frames: Havok's 30 a second, sampled at TTT2's 60.
 Out: files/key_<RICK_MOTIONS>.bin, Marduk's motion pack with the standing animation (body animation STAND_ANIM,
 which Marduk's standing move Va_sKAM00_ plays as 0x4026) replaced by Rick's, his guard appended (GUARD_ANIM, which
-ttt2rick.convert.slot gives his standing guard moves) and his attacks in place of Marduk's (ttt2rick.convert.attacks),
+ttt2rick.convert.slot gives his standing guard moves), Marduk's 3+4 crouch replaced by his RT crouch (CROUCH) and his
+attacks in place of Marduk's or appended (ttt2rick.convert.attacks),
 for his own motion row (rick_slot.cpp kRow, kRickMotions); and idle_preview.png / guard_preview.png /
 attack_<index>_preview.png (Havok's pose and the TTT2 skeleton's, side by side).
 """
@@ -52,6 +53,13 @@ MARDUK_MOTIONS = 0xC903BD27      # motion row 17's motion pack (684 animations; 
 RICK_MOTIONS = 0x52494332        # "RIC2": rick_slot.cpp kRickMotions
 STAND_ANIM = 0x26                # Marduk's standing animation (body MOTA index; his moves name it 0x4026)
 FPS = 60.0
+# Marduk's 3+4 crouch (Va_awKAM_st -> Va_awKAM_ -> Va_awKAM_2st) becomes Splatterhouse's RT crouch, the pose Rick
+# holds with the sprint button down before he runs (Idle_Sprint_Ready, igc_offbalance = offbalance_idle.hkx):
+# the loop (Va_awKAM_, Va_awKAM_g) replaced, and the way in and out of it blends between it and his stance over
+# Marduk's lengths. Its sidesteps (Va_awKAM_L/R) stay Marduk's.
+CROUCH = 'offbalance_idle.hkx'
+CROUCH_LOOP, CROUCH_IN, CROUCH_OUT = 0x138, 0x132, 0x137      # Marduk's: 65, 20 and 20 frames
+CROUCH_BLEND = 20
 # TTT2 bone (channel) -> the Rick joint whose rotation it takes. The chest channel (MUNE1, which the game spreads
 # over MUNE1 and MUNE2) takes the upper torso's: his hunch bends there (20 degrees in combatidle), and with the mid
 # torso's the chest stayed upright under a hunched neck and head, the skin between them stretched into a sheet.
@@ -109,6 +117,24 @@ def sample(an, sk, fps, times=None):
             out[k, j, 0:3] = pa[0:3] * (1 - u) + pb[0:3] * u
             out[k, j, 3:7] = q / np.linalg.norm(q)
     return out
+
+
+def load_animation(folder, name, sk):
+    """hkx.animation of `name` in folder; 'a.hkx+b.hkx+...' plays the files one after the other (Splatterhouse
+    chains states that way: runram_begin, runram_loop, runram_outro), each track by its skeleton bone, a bone one of
+    them leaves out held at the reference pose."""
+    parts = [hkx.animation(hkx.Packfile(open(os.path.join(folder, n), 'rb').read())) for n in name.split('+')]
+    if len(parts) == 1:
+        return parts[0]
+    bones = sorted({b for p in parts for b in p['bones']})
+    tracks = []
+    for p in parts:
+        t = np.tile(sk['reference'][bones][None], (p['frames'], 1, 1)).astype(float)
+        for k, b in enumerate(p['bones']):
+            t[:, bones.index(b)] = p['tracks'][:, k]
+        tracks.append(t)
+    return dict(frames=sum(p['frames'] for p in parts), fps=parts[0]['fps'], tracks=np.concatenate(tracks),
+                bones=bones)
 
 
 def blend_in(local, start, n):
@@ -176,7 +202,7 @@ class Retarget:
         blend_from: (Havok local pose, n): the first n frames blend from that pose into the animation.
         ground: (frames, 3) added to channel 0, the ground displacement (z forward: a move's travel)."""
         sk, hidx, Gref, D, nidx, bon = self.sk, self.hidx, self.Gref, self.D, self.nidx, self.bon
-        an = hkx.animation(hkx.Packfile(open(os.path.join(self.folder, name), 'rb').read()))
+        an = load_animation(self.folder, name, sk)
         local = sample(an, sk, FPS, times)[:frames]
         if blend_from is not None:
             local = blend_in(local, *blend_from)
@@ -248,6 +274,13 @@ def main(game, splatter, rick_out, out):
     pack, index = with_appended(pack, guard)
     if index != GUARD_ANIM:
         raise ValueError('the guard went to body animation %d, not GUARD_ANIM %d' % (index, GUARD_ANIM))
+    crouch, chp, ctp = retarget(CROUCH)
+    pack = with_animation(pack, CROUCH_LOOP, crouch)
+    start, crouched = (sample(load_animation(folder, n, retarget.sk), retarget.sk, FPS)[0] for n in (IDLE, CROUCH))
+    pack = with_animation(pack, CROUCH_IN, retarget(CROUCH, CROUCH_BLEND, blend_from=(start, CROUCH_BLEND))[0])
+    pack = with_animation(pack, CROUCH_OUT, retarget(IDLE, CROUCH_BLEND, blend_from=(crouched, CROUCH_BLEND))[0])
+    print('crouch: %s, %d frames, in body animation %#x (in %#x, out %#x)' % (CROUCH, len(chp), CROUCH_LOOP,
+                                                                             CROUCH_IN, CROUCH_OUT))
     pack, shown = attacks.with_attacks(pack, retarget, IDLE)
     pack, more = attacks.with_new_attacks(pack, retarget, IDLE)
     shown.update(more)
@@ -256,6 +289,7 @@ def main(game, splatter, rick_out, out):
     names, parents = retarget.sk['names'], retarget.sk['parents']
     preview(hp, names, parents, tp, retarget.bon['parent'], os.path.join(out, 'idle_preview.png'))
     preview(ghp, names, parents, gtp, retarget.bon['parent'], os.path.join(out, 'guard_preview.png'))
+    preview(chp, names, parents, ctp, retarget.bon['parent'], os.path.join(out, 'crouch_preview.png'))
     for index, (ahp, atp) in shown.items():
         preview(ahp, names, parents, atp, retarget.bon['parent'], os.path.join(out, 'attack_%x_preview.png' % index))
     print('%s: stance %d frames, guard %d frames (body animation %d = %#x) at %.0f fps, motion pack %d bytes' % (

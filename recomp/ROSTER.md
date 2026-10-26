@@ -204,3 +204,14 @@ Both have Marduk's records otherwise (UI row 18, sex, +20 function), his voice a
   white line drawn over him (art.in_frame, from the empty panel shape every panel shows); Rick's had covered them.
   The right grille is shortened by a column for Jennifer's cell (art.Layout.shorten_spacer: texels of the plain
   perforation cut out before its bevelled edge).
+
+## Moves on the buttons' limbs (2026-10-26)
+
+ttt2rick.convert.attacks (see its docstring): 2, 2,2, 2,2,1 is Splatterhouse's right-hand X chain (right haymaker on
+Marduk's 2 at i12, right backhand, the 360 punch with the left arm), a natural 3-hit combo in game (12 + 12 + 19 at
+Practice's 120%); b+1 and its strings are Marduk's again. 3+4 is Splatterhouse's RT crouch (offbalance_idle, idle.py
+CROUCH: Marduk's crouch loop and its way in and out replaced); from it 1 is the running ram (RT+Y, left shoulder,
+active 16-26: at 16-19 it whiffed while still closing in), 2 the sweeping punch (RT+X, right fist, a mid launcher)
+and 1+2 Marduk's takedown with Splatterhouse's lunge (RT+B, tackle_miss), into his mount. Each move's striking limb
+at its hit frame and its hitbox bones (TE_R = 9, UDE_R 8, KATA_L 11, UDE_L 12, TE_L 13) were checked against the
+buttons: 1 left arm, 2 right arm. Jennifer gets all of it through Rick's moveset (JEN1) and motion pack (JEN2).
