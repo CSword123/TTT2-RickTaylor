@@ -1243,6 +1243,32 @@ PPC_FUNC(sub_8227A078)                      // id -> its costume panel pictures'
     __imp__sub_8227A078(ctx, base);
 }
 
+// The select screen's costume panel (X changes the costume) reads the same 63-key table inline, by id (r4): for an
+// added fighter, the entry its id reads (past the table's end) holds its own key while the function runs.
+namespace {
+void WithPanelKey(PPCContext& ctx, uint8_t* base, void (*fn)(PPCContext&, uint8_t*))
+{
+    const Fighter* f = ById(ctx.r4.u32);
+    if (!f) { fn(ctx, base); return; }
+    const uint32_t entry = 0x8200C7D0 + 4 * f->id, was = GRead32(base, entry);
+    GWrite32(base, entry, Crc((std::string(f->code) + "/costume_panel.nut").c_str()));
+    fn(ctx, base);
+    GWrite32(base, entry, was);
+}
+}
+
+extern "C" PPC_FUNC(__imp__sub_8227DB70);
+PPC_FUNC(sub_8227DB70)                      // (this, id r4): requests the panel's pictures file
+{
+    WithPanelKey(ctx, base, __imp__sub_8227DB70);
+}
+
+extern "C" PPC_FUNC(__imp__sub_8227ED80);
+PPC_FUNC(sub_8227ED80)                      // (this, id r4): builds the panel once that file is loaded (r3 0 until
+{                                           // then; with the key past the table's end it never was)
+    WithPanelKey(ctx, base, __imp__sub_8227ED80);
+}
+
 extern "C" PPC_FUNC(__imp__sub_82717200);
 PPC_FUNC(sub_82717200)                      // (this, id r4): the fighter's Customize item list (data051), by a
 {                                           // 63-entry key table
