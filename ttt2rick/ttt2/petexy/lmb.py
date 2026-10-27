@@ -577,6 +577,13 @@ class Lmb:
                             next_pid += 1
                         c.pid = pid_map[c.pid]
             (sprite.keyframes if is_key else sprite.frames).append(Frame(index + ref.index - start, ch, is_key))
+        # and one frame more that changes nothing (its actions only, a stop): a screen that steps the sprite on from
+        # the label (the select screen's team strip, once a member is picked) still shows this label's picture, not
+        # the next label's (the added labels are the sprite's last)
+        last = max((f for f in sprite.frames if f.index >= index), key=lambda f: f.index, default=None)
+        if last is not None:
+            sprite.frames.append(Frame(last.index + 1, [_copy_child(c) for c in last.children
+                                                        if isinstance(c, DoAction)], False))
         sprite.labels.append(Label(self.symbol(new_label), index))
         return index
 

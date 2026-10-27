@@ -41,7 +41,7 @@ RICK = Fighter(code='ric', name='RICK', picture='rick_taylor.png', clean=True,
                portrait_frame=118, hud=(259, 260, 261), cell={'anchor': 'edd', 'columns': 0, 'grid_row': 0},
                hud_letters=[(18, 74, 97), (9, 34, 40), (27, 97, 121), (18, 154, 179)])   # MARDUK JIN BRUCE MARDUK
 JEN = Fighter(code='jen', name='JENNIFER', picture='jennifer_willis.png', clean=False,
-              face=(536, 92, 41), icon=(0.48, 0.36, 0.20), hud_face=(0.64, 532, 28), portrait=(1.12, 522, 28), portrait_fringe=1,
+              face=(536, 92, 41), icon=(0.53, 0.40, 0.18), hud_face=(0.64, 532, 28), portrait=(1.12, 522, 28), portrait_fringe=1,
               portrait_frame=122, hud=(262, 263, 264), cell={'anchor': 'lee', 'columns': 0, 'grid_row': 0},
               hud_letters=[(9, 12, 30), (31, 38, 59), (31, 62, 88), (31, 62, 88), (9, 34, 40), (31, 16, 37),
                            (31, 38, 59), (18, 74, 97)])         # JIN FENG FENG FENG JIN FENG FENG MARDUK

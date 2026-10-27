@@ -22,6 +22,36 @@ GRID_BESIDE = 'vio'
 PITCH_FROM = ('rog', 'rav')       # grid row 1, columns 0 and 1
 PAGE_WIDTH = 1024                 # new texture pages: at most this wide, as tall as needed
 SPACER_EDGE = 24                  # texels: a grille's bevelled inner edge, kept when it is shortened
+SPACER_FADE = 6                   # texels blended across a shortened grille's cut
+
+
+def cut_columns(pic, k, edge_high):
+    """A grille's picture with k texel columns of its band cut out (Layout.shorten_spacer). The band darkens towards
+    its inner edge (high u with edge_high, else low u), so the cut goes where the columns on either side of it are
+    alike in brightness (k is whole periods of the perforation, so the holes line up), between the edge
+    (SPACER_EDGE) and the L's lower part (the columns its bottom rows have), and the seam is blended."""
+    h, w = pic.shape[:2]
+    alpha = pic[..., 3] if pic.shape[2] == 4 else np.ones((h, w))
+    lower = np.nonzero(alpha[h - 5] > 0)[0]
+    if edge_high:
+        lo, hi = (lower.max() + 8 if len(lower) else SPACER_EDGE), w - SPACER_EDGE - k
+    else:
+        lo, hi = SPACER_EDGE, (lower.min() - 8 if len(lower) else w - SPACER_EDGE) - k
+    if hi < lo + SPACER_FADE:                   # no room: just before the edge
+        s = w - SPACER_EDGE - k if edge_high else SPACER_EDGE
+    else:
+        band = alpha[:, (lo + hi) // 2] > 0     # the band's rows
+        lum = pic[band][..., :3].mean(-1)
+        diff = [abs(lum[:, s - SPACER_FADE:s].mean() - lum[:, s + k:s + k + SPACER_FADE].mean())
+                for s in range(lo, hi + 1)]
+        s = lo + int(np.argmin(diff))
+    new = np.concatenate([pic[:, :s], pic[:, s + k:]], 1)
+    for i in range(min(SPACER_FADE, s)):        # the columns before the cut fade into the ones after it
+        t = (i + 1) / (SPACER_FADE + 1)
+        c = s - SPACER_FADE + i
+        if c >= 0:
+            new[:, c] = (1 - t) * pic[:, c] + t * pic[:, c + k]
+    return new
 
 # Where a face sits in each kind of picture: (eyes' centre x, y as fractions of the picture, eyes-to-chin as a
 # fraction of its height, which Tekken 7 picture: 'bust' or 'body'). Measured on the TTT2 pictures.
@@ -539,8 +569,8 @@ class Layout:
 
     def shorten_spacer(self, shape, cut):
         """The fitted right grille (fit_spacer) with its top band `cut` units shorter at its open end, which a new cell
-        took: its inner edge (the bevelled border, SPACER_EDGE texels) is kept, and texels of the plain perforation
-        just before it are cut out; the band's lower part (beside the lower rows, at the far end) stays where it is.
+        took: its inner edge (the bevelled border, SPACER_EDGE texels) is kept, and texels of the band's perforation
+        are cut out (cut_columns); the band's lower part (beside the lower rows, at the far end) stays where it is.
         A new picture on a page of the layout's (pages())."""
         g = shape.graphics[0]
         pic, (w, h) = self.shape_picture(shape)
@@ -552,10 +582,7 @@ class Layout:
         edge_high = u_at_x0 >= max(v[2] for v in g.verts) - 1e-6
         if not 0 < k < w - 2 * SPACER_EDGE:
             return
-        if edge_high:
-            new = np.concatenate([pic[:, :w - SPACER_EDGE - k], pic[:, w - SPACER_EDGE:]], 1)
-        else:
-            new = np.concatenate([pic[:, :SPACER_EDGE], pic[:, SPACER_EDGE + k:]], 1)
+        new = cut_columns(pic, k, edge_high)
         # the same quad, its open end moved in by `cut`
         moved = [[x + cut * (x1 - x) / (x1 - x0), y, u, v] for x, y, u, v in g.verts]
         like = lmb.Shape(shape.id, shape.bounds, [lmb.Graphic(g.atlas, moved, list(g.indices), g.fill)],
