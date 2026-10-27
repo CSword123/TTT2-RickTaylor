@@ -12,6 +12,10 @@ takes green and blue away and leaves red about as bright as what it lies on, so 
 its brightness and gets the colour of the material most clean pixels around it are (within MAJORITY_RADIUS, each
 material filled on its own); on black the brightness is capped near the black's (thick blood is redder than it).
 
+clean_skin takes the bright red spatter off Mirror Rick's own body texture (SKIN: his blue-teal marble skin): red
+over green and blue, bright enough, painted over by fill with the marble's colours around at the pixel's own
+brightness (so the marble's grain stays). His thin dark veins and the pinkish wash are his, and stay.
+
 clean_picture does the same for the picture of him (work/art/rick_taylor.png) that ttt2rick.convert.portrait makes
 his select portraits from: the blood there lies on his skin as well (the right arm all over, see-through smears on
 the chest) and on the shorts.
@@ -29,6 +33,7 @@ from PIL import Image
 # Diluted blood on white is a pink tint: red over green and blue, which are about equal (the waistband's tan has
 # green well over blue).
 CLEAN = {'rick_lowerbody_base.png': (0.25, 0.38, False), 'rick_globeshoes_base.png': (0.10, 0.22, True)}
+SKIN = {'mirror_rick_body_base.png': (0.12, 0.30)}    # texture -> redness ramp (clean_skin); red from 60 to 100
 PRINT_RADIUS = 3                        # pixels around which print makes a pixel part of the print area
 MAJORITY_RADIUS = 6                     # pixels (shoes, 256 x 256)
 LIGHT_STAIN = 120                       # a shoe stain's red from which it lies on white, whatever is around
@@ -136,6 +141,31 @@ def clean(rgba, ramp=(0.25, 0.38, False)):
     return out
 
 
+def skin_weight(rgb, ramp=(0.12, 0.30)):
+    """0..1 per pixel of Mirror Rick's skin: how much it is bright red blood, grown a pixel."""
+    r, g, b = (rgb[..., i].astype(np.float32) for i in range(3))
+    redness = 1 - np.maximum(g, b) / np.maximum(r, 1.0)
+    w = np.clip((redness - ramp[0]) / (ramp[1] - ramp[0]), 0, 1) * np.clip((r - 60.0) / 40.0, 0, 1)
+    grown = w.copy()
+    for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+        grown = np.maximum(grown, 0.6 * np.roll(w, (dy, dx), (0, 1)))
+    return grown
+
+
+def clean_skin(rgba, ramp=(0.12, 0.30)):
+    """Mirror Rick's skin (h, w, 4 uint8) without its bright red blood: the colours around at the pixel's own
+    brightness (0.6 to 1.3 of theirs)."""
+    a = np.asarray(rgba)
+    rgb = a[..., :3].astype(np.float32)
+    w = skin_weight(a, ramp)[..., None]
+    filled = fill(rgb, w[..., 0] < 0.05)[0]
+    luma = np.array([0.3, 0.59, 0.11], np.float32)
+    k = np.clip((rgb @ luma) / np.maximum(filled @ luma, 1.0), 0.6, 1.3)[..., None]
+    out = a.copy()
+    out[..., :3] = np.clip(rgb * (1 - w) + filled * k * w + 0.5, 0, 255).astype(np.uint8)
+    return out
+
+
 def print_dirt(rgb):
     """The shoes' yellow-green print without its dirt: the print is green over red (its darker printed patches
     too), mud and dried blood on it orange to brown (red as high as green or higher). Those pixels take the colour of
@@ -213,15 +243,18 @@ def clean_picture(picture):
 def main():
     src, out = sys.argv[1:3]
     os.makedirs(out, exist_ok=True)
-    for name, ramp in CLEAN.items():
+    for name, ramp in list(CLEAN.items()) + list(SKIN.items()):
+        if not os.path.exists(os.path.join(src, name)):
+            continue
         im = np.asarray(Image.open(os.path.join(src, name)).convert('RGBA'))
-        after = clean(im, ramp)
+        after = clean_skin(im, ramp) if name in SKIN else clean(im, ramp)
         h, w = im.shape[:2]
         sheet = Image.new('RGB', (2 * w, h))
         sheet.paste(Image.fromarray(im).convert('RGB'), (0, 0))
         sheet.paste(Image.fromarray(after).convert('RGB'), (w, 0))
         sheet.save(os.path.join(out, name.replace('.png', '_before_after.png')))
-        print('%s: %.1f%% of pixels were blood' % (name, 100 * (blood_weight(im, ramp[:2]) > 0.5).mean()))
+        weight = skin_weight(im, ramp) if name in SKIN else blood_weight(im, ramp[:2])
+        print('%s: %.1f%% of pixels were blood' % (name, 100 * (weight > 0.5).mean()))
 
 
 if __name__ == '__main__':

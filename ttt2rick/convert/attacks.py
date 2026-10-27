@@ -181,14 +181,15 @@ ONLY = [b[0] for b in BARRAGE]                  # moves whose cancel list (Mardu
 EXTRA = {'Va_ttlplp_ric': [(0x8001, 0x80f8, 2), (8, 0x81aa, 1), (24, 0x81aa, 0)]}
 BOUND = ['Va_ttlplp_ric']
 # move -> (its reaction to replace, the new one), by the reactions' normal-hit (default) moves: 2, 2,2 and 2,1 leave
-# the opponent standing (face hits: 30 frames after 2, 40 after 2,2 and 2,1), the spin crumples. A reaction move
+# the opponent standing (face hits: 30 frames after 2, 40 after 2,2 and 2,1), the spin crumples; f+2,1,1 (the left
+# backhand) snaps the head back as f+2,2 (the right one) does (the user's call, 2026-10-27). A reaction move
 # without the bit 0x8 in its bitfield (Marduk's 2's sDm_KAOR27G_Va, and sDm_Rhd40GY, sDm_Lhd00(G) this file used)
 # shakes the screen as the opponent takes the hit; these have it, as the jab's and 1,2's (measured in game,
 # 2026-10-26: the user found 2,2 and 2,1 still shook)
 REACTIONS = {'Va_fhay_ric': ('sDm_KAOR27G_Va', 'sDm_IKAO00R'), 'Va_rpbh_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl'),
              'Va_ram_ric': ('sDm_Sty00_', 'sDw_KAO00_'),   # the ram knocks down (Va_awtac's only staggered)
              'Va_lhay_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl'), 'Va_ttlplp_ric': ('sDm_KAKLcrG', 'sDm_KAKLcr'),
-             'Va_lariat_ric': ('sDm_KAKLcrG', 'sDw_KAO00_'), 'Va_lbh_ric': ('sDm_KAKLcrG', 'sDm_KAKLcr'),
+             'Va_lariat_ric': ('sDm_KAKLcrG', 'sDw_KAO00_'), 'Va_lbh_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl'),
              'Va_strl_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl')}
 # hit levels (low byte: 0x10f low, 0x217 mid, 0x512 high; 0x200000 marks a heavy hit, which shakes the screen: Marduk's
 # haymakers and power moves have it, and Va_ttlprp's copies with it): none of the 2,2,1,2 string has it (the user

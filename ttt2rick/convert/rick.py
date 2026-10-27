@@ -11,7 +11,8 @@ python -m ttt2rick.convert.rick <game folder> <rick export dir, e.g. work/rick/b
    costume part's cloth for the mask, clothes and shoes, the donor's face overlay for hair) with Rick's colour and
    normal maps and flat textures of the template's average for the other slots.
 5. Item database: the donor's, body only (Petexy's itemdb.body_only), so none of its costume parts are drawn.
-6. Blood: the jeans and shoes are cleaned of Splatterhouse's painted-in blood (ttt2rick.convert.clean);
+6. Blood: the jeans and shoes (and Mirror Rick's skin) are cleaned of Splatterhouse's painted-in blood
+   (ttt2rick.convert.clean);
    <code>_blood.nut is the same NUT with it (recomp/runtime/rick_slot.cpp loads it under TTT2_RICK_BLOOD=1).
 Writes files/<code>.nud/.nut/_blood.nut/.bon/.xml (install that folder with ttt2rick.ttt2.overlay) and preview.png.
 """
@@ -248,13 +249,15 @@ class TextureBank:
     def colour(self, path, alpha, skin=False):
         im = Image.open(path).convert('RGBA')
         size = pow2(*im.size)
-        ramp = blood.CLEAN.get(os.path.basename(path))
+        name = os.path.basename(path)
+        ramp = blood.CLEAN.get(name) or blood.SKIN.get(name)
         a = np.array(im.resize(size, Image.LANCZOS))
         if not alpha:
             a[..., 3] = 255
-        if ramp:                                       # the clothes' blood off (at the texture's own size), the
-            bloody = a.copy()                          # original kept for the bloody variant (textures(bloody=True))
-            a = np.array(Image.fromarray(blood.clean(np.asarray(im), ramp)).resize(size, Image.LANCZOS))
+        if ramp:                                       # the clothes' (and Mirror Rick's skin's) blood off (at the
+            bloody = a.copy()                          # texture's own size), the original kept for the bloody
+            clean = blood.clean_skin if name in blood.SKIN else blood.clean    # variant (textures(bloody=True))
+            a = np.array(Image.fromarray(clean(np.asarray(im), ramp)).resize(size, Image.LANCZOS))
             if not alpha:
                 a[..., 3] = 255
         if skin and self.skin_target is not None:      # a few passes: grading changes which pixels count as skin
