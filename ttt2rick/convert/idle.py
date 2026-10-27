@@ -194,7 +194,8 @@ class Retarget:
         self.stand = marduk_stand(arc)
         self.yaws = {}
 
-    def __call__(self, name, frames=None, times=None, yaw=None, blend_from=None, ground=None, adjust=None):
+    def __call__(self, name, frames=None, times=None, yaw=None, blend_from=None, ground=None, adjust=None,
+                 finish=None):
         """(raw animation, Havok joint positions per frame, TTT2 joint positions per frame) of Rick's Havok
         animation `name`, its first `frames` frames at FPS (all by default), or sampled at `times` (Havok frames).
         yaw: the root turn to take out (radians; default the animation's mean, kept in self.yaws[name]), or one per
@@ -202,7 +203,9 @@ class Retarget:
         blend_from: (Havok local pose, n): the first n frames blend from that pose into the animation.
         ground: (frames, 3) added to channel 0, the ground displacement (z forward: a move's travel).
         adjust: a function (Havok world matrices (frames, n, 4, 4), joint names) -> world matrices, a pose change made
-        before retargeting (ttt2rick.convert.poses: the intro's head)."""
+        before retargeting (ttt2rick.convert.poses: the intro's head).
+        finish: a function (frames, channels, 3) channel values -> values, a change made to the TTT2 animation itself
+        (ttt2rick.convert.attacks: the takedown's lunge blended into Marduk's mount)."""
         sk, hidx, Gref, D, nidx, bon = self.sk, self.hidx, self.Gref, self.D, self.nidx, self.bon
         an = load_animation(self.folder, name, sk)
         local = sample(an, sk, FPS, times)[:frames]
@@ -265,6 +268,8 @@ class Retarget:
             values[f, 1] = root / scale * np.array([1, 1, -1])
             if ground is not None:
                 values[f, 0] += ground[f]
+        if finish is not None:
+            values = finish(values)
         return raw_animation(desc, values), [g[:, :3, 3] for g in G], tposes
 
 
@@ -287,6 +292,7 @@ def main(game, splatter, rick_out, out):
                                                                              CROUCH_IN, CROUCH_OUT))
     pack, shown = attacks.with_attacks(pack, retarget, IDLE)
     pack, more = attacks.with_new_attacks(pack, retarget, IDLE)
+    pack = attacks.with_run(pack, retarget, IDLE, arc)
     pack = poses.with_poses(pack, retarget, IDLE)
     shown.update(more)
     os.makedirs(os.path.join(out, 'files'), exist_ok=True)

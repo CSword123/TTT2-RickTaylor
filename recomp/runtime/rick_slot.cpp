@@ -1163,6 +1163,9 @@ PPC_FUNC(sub_826277B0)
 // pick, never came back (the user's report: Rick, then Jennifer, in tag). Whenever whom a player shows changes (the
 // cursor's fighter, the members' records) and an added fighter is or was among them, those rows are forgotten (-1),
 // so the screen redraws them as for any other change, and the per-slot hooks above give each slot its own fighter.
+// Not while a tag team's first member is picked and only the cursor moved: forgetting them redrew the picked first
+// member's big portrait at every move (the user's report, 2026-10-27: Rick picked first in tag); the screen redraws
+// the second member's slot itself when its row changes, and SelectSecondMembers when it does not.
 extern "C" PPC_FUNC(__imp__sub_826277B0);
 extern "C" PPC_FUNC(__imp__sub_826278E0);
 extern uint32_t g_selectUpdateScreen;
@@ -1205,7 +1208,8 @@ void SelectSecondMembers(PPCContext& ctx, uint8_t* base, uint32_t screen)
             Call(ctx, base, __imp__sub_8227AE48, { player });
             second = FighterKey(0, ctx.r3.u32, false);
         }
-        const bool ours = first != -3 && second != -3 && first != second;
+        // (a stock first member too: its cursor going between Marduk and an added fighter keeps row 18)
+        const bool ours = second != -3 && first != second;
         if (!ours) { g_drawn[p] = -99; continue; }
         const int key = second * 4 + int(picked);
         if (g_drawn[p] == key) continue;
@@ -1255,8 +1259,10 @@ PPC_FUNC(sub_82643A08)
         now.cursor = ctx.r3.u32;
         ctx.r3.u64 = screen;
         Shown& was = g_shown[p];
+        const bool secondOnly = now.first == was.first && now.second == was.second &&
+                                GRead32(base, player + 336) == 2 && GRead32(base, player + 340) == 1;
         if ((now.cursor != was.cursor || now.first != was.first || now.second != was.second) &&
-            (Involves(now) || Involves(was)))
+            (Involves(now) || Involves(was)) && !secondOnly)
         {
             for (uint32_t k : { 43u, 45u, 47u }) GWrite32(base, screen + 4 * (k + p), ~0u);
             if (Traced())

@@ -31,19 +31,22 @@ right-hand chain is his 2, 2,2, 2,2,1 (the user's call, 2026-10-26: the right ha
 - 2,1: the left haymaker (atk_punchl_high) after the right one (Va_lhay_ric, a high), from FOLLOW_UP_FRAME, i17.
 f+2 carries him a little further than its footwork (LUNGE_EXTRA, the user's call, 2026-10-27).
 f+1+2 (in place of Marduk's Va_double) is Splatterhouse's barrage, its mashed X (BarragePunchA-H, atk_barrage01-04,
-right fist first, at its own speed): a press throws two, held 1+2 up to eight (BARRAGE).
+right fist first, at its own speed): a press throws two, held 1+2 up to eight (BARRAGE), each a light mid.
 2 and 2,2 snap the head back standing (REACTIONS), so the next hit combos; the spin crumples, and the lariat (a mid)
 still catches the crumpling opponent (2,1 and 2,2,1,2 are natural combos in game). b+1 and its strings are
 Marduk's own again.
 
 The 3+4 crouch is Splatterhouse's RT crouch (ttt2rick.convert.idle CROUCH), and its moves Splatterhouse's moves off it
 (playersprintattackstates.smf): 1 is the running ram (RT+Y: RunRam_Begin -> RunRam_Loop -> runram_outro, the left
-shoulder first), on a copy of Marduk's crouch tackle (Va_awtac, his f+1 from the crouch), a knockdown (sDw_KAO00_)
-that runs on through the loop (TRAVEL_UNTIL) past the fallen opponent; 2 is the sweeping punch (RT+X:
+shoulder first), on a copy of Marduk's crouch tackle (Va_awtac, his f+1 from the crouch), a heavy mid knockdown
+(sDw_KAO00_, 24 damage) charging at a steady speed (STEADY) that runs on through the loop (TRAVEL_UNTIL) past the
+fallen opponent; 2 is the sweeping punch (RT+X:
 Sprint_AtkPunch, runram_roundpunch, right fist), on a copy of his crouch f+2 (Va_sprp), a true low (HITLEVEL); 1+2 stays Marduk's
 takedown (Va_spear, into his mount: Va_spear01, the opponent's Mt_ moves), its lunge playing Splatterhouse's (RT+B:
 DashAttackGrab, tackle_miss), carried as far as Marduk's (1821 units at its contact frame 24), so the takedown,
-which plays Marduk's own animations in step with the opponent's, starts where his would.
+which plays Marduk's own animations in step with the opponent's, starts where his would; the lunge blends into his
+mount's first pose by the frame it goes on to it (INTO).
+His run (a dash held on from a distance) is Splatterhouse's standard run (RUN, with_run) at TTT2's speed.
 
 The spin gets Marduk's b+2's (Va_rp00B) two properties of its own (EXTRA): 0x81aa, which only that move has,
 on 12 frames before its hit and off 2 after it (the faint white streak along the swing), and 0x80f8 = 2 from the
@@ -103,7 +106,7 @@ STARTUP_NEW = {'Va_rpbh_ric': (17, 19), 'Va_ttlplp_ric': (20, 22), 'Va_rpst_ric'
                'Va_sweep_ric': (18, 19), 'Va_lhay_ric': (17, 19), 'Va_lariat_ric': (20, 22), 'Va_fhay_ric': (16, 17),
                'Va_lbh_ric': (17, 19), 'Va_strl_ric': (18, 20), 'Va_smash_ric': (22, 24)}
 # damage of every hit-condition entry (Marduk's 2 10, Va_ttlprp 10, crouch f+1 16, f+2 22): the finishers do more
-DAMAGE = {'Va_ttlplp_ric': 16, 'Va_rpst_ric': 30, 'Va_ram_ric': 18, 'Va_lariat_ric': 22, 'Va_lbh_ric': 14,
+DAMAGE = {'Va_ttlplp_ric': 16, 'Va_rpst_ric': 30, 'Va_ram_ric': 24, 'Va_lariat_ric': 22, 'Va_lbh_ric': 14,
           'Va_strl_ric': 14, 'Va_smash_ric': 25}
 # the frame a move ends (back to the stance), where its animation is longer than the copied move (Va_awtac ends at
 # 40, Va_sprp at 50): the ram's outro and the sweep's follow-through play out
@@ -145,6 +148,24 @@ NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20, 'L', FEET, None),              
                ('atk_barrage04.hkx', 9, 36, 9, 'L', FEET, None)]                 # 700 BarragePunchD, H: left
 # Marduk's moves given an appended animation (by its index in NEW_ATTACKS)
 ANIMS = {'Va_spear': SPIN_ANIM + 6}
+# appended animations that blend into one of Marduk's at the frame his move goes on to it: the takedown's lunge
+# (Va_spear) goes on to Va_spear01 (body animation 461, Marduk's mount) at its frame 24 on a hit, where Rick's lunge
+# pose cut into Marduk's (the user, 2026-10-27: smoother into the mount). (animation file -> (Marduk's body
+# animation, the frame, frames blended in before it, frames back out after it: a whiff plays on as Splatterhouse's))
+INTO = {'tackle_miss.hkx': (461, 24, 16, 16)}
+# the run (a dash held on from a distance): Splatterhouse's standard run (nav_run, a 25-frame cycle at 30 fps, two
+# steps) in place of Marduk's, one step to each of his run moves' 16 frames (sRUN__01F and 03F play his body
+# animation 5, 02F the common motions' 0: the other step), and his run's start (sRUN__00F, the common motions' 93, 32
+# frames) speeding up into the first step from the stance. Each keeps the ground travel of the animation it replaces,
+# so the run is as fast as TTT2's and its moves come out where they did. (the user, 2026-10-27)
+RUN = 'nav_run.hkx'
+RUN_CYCLE = 25.0                 # Havok frames (its frame 25 is its frame 0)
+RUN_STEP = 16                    # frames of each run move
+RUN_START = 32
+RUN_ANIM = SPIN_ANIM + len(NEW_ATTACKS)          # its three: the start, step A, step B (701-703)
+RUN_GROUND = [('common', 93), ('common', 0), ('body', 5)]   # the animations they replace, for their ground travel
+ANIMS.update({'sRUN__00F': RUN_ANIM, 'sRUN__02F': RUN_ANIM + 1, 'sRUN__01F': RUN_ANIM + 2, 'sRUN__03F': RUN_ANIM + 2})
+COMMON_MOTIONS = ('data004.bin', 0)              # TTT2's common motions (a move's animation 0x8000 + index)
 # Rick's own moves: (name, the move copied, its body animation, hitbox from, after moves, button, the cancel's frame:
 # None: where the copied move's own cancel from `after` is; 'like': as the first `after` row of LIKE's)
 LEFT_ARM = 'Va_lp00B'            # hitbox 0d0c: left hand and forearm (right: 0908, Va_rp00's 09)
@@ -193,26 +214,34 @@ REACTIONS = {'Va_fhay_ric': ('sDm_KAOR27G_Va', 'sDm_IKAO00R'), 'Va_rpbh_ric': ('
              'Va_strl_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl')}
 # hit levels (low byte: 0x10f low, 0x217 mid, 0x512 high; 0x200000 marks a heavy hit, which shakes the screen: Marduk's
 # haymakers and power moves have it, and Va_ttlprp's copies with it): none of the 2,2,1,2 string has it (the user
-# found its shakes excessive, 2026-10-26), the sweep a true low, the left haymaker a high like 2
+# found its shakes excessive, 2026-10-26), the sweep a true low, the left haymaker a high like 2; the ram a heavy mid
+# (still blocked by a standing guard: sGrd_AokihR18), 24 damage (the user's call, 2026-10-27: a heavier knockdown)
 # moves without the extra property 0x8001, which Marduk's 2 and his Va_ttlprp (so its copies) have, as his power
 # moves (b+1, the headbutts, the stomp): it shakes the screen on a hit (measured in game, 2026-10-26, the
 # background's shift frame to frame over a burst of frames: 2 shook for 12 frames on a hit, the jab and 1,2 not)
 NO_SHAKE = ['Va_fhay_ric', 'Va_rpbh_ric', 'Va_lhay_ric', 'Va_ttlplp_ric', 'Va_lariat_ric', 'Va_lbh_ric', 'Va_strl_ric']
-HITLEVEL = {'Va_rpbh_ric': 0x217, 'Va_ttlplp_ric': 0x217, 'Va_sweep_ric': 0x10f, 'Va_lhay_ric': 0x512,
+HITLEVEL = {'Va_ram_ric': 0x200217, 'Va_rpbh_ric': 0x217, 'Va_ttlplp_ric': 0x217, 'Va_sweep_ric': 0x10f, 'Va_lhay_ric': 0x512,
             'Va_lariat_ric': 0x217, 'Va_lbh_ric': 0x217, 'Va_strl_ric': 0x217}
 # the barrage's hits: active from the fist's full extension for 3 frames, ending with their animations, light
-# (a press's two 5 each, the held ones 4: 34 for all eight), each a head snap that holds the opponent for the next
-# one (as 2's), and no screen shake
+# (a press's two 5 each, the held ones 4: 34 for all eight), mids, each a light body flinch (sDm_HAR00M, Marduk's
+# mids' own: 30 frames, as long as 2's head snap, so it holds the opponent for the next one), and no screen shake
+# (the user's call, 2026-10-27: all light reaction mids)
 for _name, _k, _, _, _ in BARRAGE:
     _peak = [10, 12, 9, 9][_k]
     STARTUP_NEW[_name] = (_peak, _peak + 2)
     END[_name] = BARRAGE_LENGTH[_k]
     DAMAGE[_name] = 5 if _name in ('Va_brgA_ric', 'Va_brgB_ric') else 4
-    REACTIONS[_name] = ('sDm_KAOR27G_Va', 'sDm_IKAO00R')
+    REACTIONS[_name] = ('sDm_KAOR27G_Va', 'sDm_HAR00M')
+    HITLEVEL[_name] = 0x217
     NO_SHAKE.append(_name)
 # the frame by which an attack's travel is all done (default: a few frames after its hit): the ram runs on through
 # its loop (to frame 34, where runram_outro starts) instead of charging in place once it hit
 TRAVEL_UNTIL = {RAM_FILES: 34}
+# attacks that travel at a steady speed (a charge straight in: the same distance each frame, up to speed and down
+# again over STEADY_EDGE frames) instead of the eased charge (the user, 2026-10-27: the ram's tracking should be
+# linear and consistent; eased, it was still speeding up through its active frames)
+STEADY = {RAM_FILES}
+STEADY_EDGE = 4
 
 
 def retime(frames_src, peak, frames_dst, impact):
@@ -228,13 +257,17 @@ def ease(x):
     return x * x * (3 - 2 * x)
 
 
-def travel(frames, impact, forward, until=None):
+def travel(frames, impact, forward, until=None, steady=False):
     """(frames, 3) ground displacement: `forward` along z, eased from BLEND_IN to a few frames after the hit (or to
-    frame `until`)."""
+    frame `until`); steady: at one speed, reached and left over STEADY_EDGE frames (a trapezoid)."""
     k = np.arange(frames, dtype=float)
     out = np.zeros((frames, 3))
     end = until if until is not None else impact + 4
-    out[:, 2] = forward * ease((k - BLEND_IN) / max(1, end - BLEND_IN))
+    if steady:
+        speed = np.clip(np.minimum(k - BLEND_IN, end - k) / STEADY_EDGE, 0, 1)
+        out[:, 2] = forward * np.cumsum(speed) / speed.sum()
+    else:
+        out[:, 2] = forward * ease((k - BLEND_IN) / max(1, end - BLEND_IN))
     return out
 
 
@@ -265,16 +298,16 @@ def aim(frames, impact):
                     1 - ease((k - impact - 4) / max(1, frames - 1 - impact - 4)))
 
 
-def _attack(retarget, start, name, peak, frames, impact, hand, forward, stance):
+def _attack(retarget, start, name, peak, frames, impact, hand, forward, stance, finish=None):
     """(raw animation, Havok joints, TTT2 joints) of an attack: retimed, turned to aim (unless hand is None: a ram, a
-    lunge, led by the body), carried forward (forward None: by its own footwork)."""
+    lunge, led by the body), carried forward (forward None: by its own footwork), finished (Retarget's finish)."""
     from .idle import load_animation
     an = load_animation(retarget.folder, name, retarget.sk)
     times = retime(an['frames'], peak, frames, impact)
     base = retarget.yaws[stance]
-    kw = dict(times=times, blend_from=(start, BLEND_IN))
+    kw = dict(times=times, blend_from=(start, BLEND_IN), finish=finish)
     if forward is not None:
-        kw['ground'] = travel(frames, impact, forward, TRAVEL_UNTIL.get(name))
+        kw['ground'] = travel(frames, impact, forward, TRAVEL_UNTIL.get(name), name in STEADY)
     yaw = base
     if hand is not None:
         names = [n[4:] if n.startswith('cha:') else n for n in retarget.bon['names']]
@@ -295,6 +328,40 @@ def _attack(retarget, start, name, peak, frames, impact, hand, forward, stance):
         print('%s: aimed %.0f degrees (the %s hand now %.0f off)' % (name, np.degrees(off), hand,
                                                                      np.degrees(np.arctan2(x, z))))
     return out
+
+
+def _turn_between(Ra, Rb, u):
+    """The rotation u of the way from Ra to Rb (along the shortest arc)."""
+    D = Ra.T @ Rb
+    angle = np.arccos(np.clip((np.trace(D) - 1) / 2, -1, 1))
+    if angle < 1e-6:
+        return Ra
+    axis = np.array([D[2, 1] - D[1, 2], D[0, 2] - D[2, 0], D[1, 0] - D[0, 1]]) / (2 * np.sin(angle))
+    K = np.array([[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]])
+    a = u * angle
+    return Ra @ (np.eye(3) + np.sin(a) * K + (1 - np.cos(a)) * K @ K)
+
+
+def blend_into(target, typ, frame, before, after):
+    """finish (ttt2rick.convert.idle.Retarget) that blends an animation's channel values into `target` (channels, 3:
+    one frame of another animation's, of animation type `typ`: Marduk's are mostly 0x64, whose rotations are
+    axis-angle, not the Euler angles Retarget writes) at `frame`, eased in over `before` frames and out over `after`:
+    the root's position (channel 1) and every bone's rotation (ttt2rick.ttt2.fk.CHANNEL_BONES); the ground travel
+    (channel 0) stays the animation's own."""
+    from ..ttt2 import fk
+    from ..ttt2.petexy import animation, bone
+    turns = {c: animation.local_rotation(np.asarray(target[c], np.float64), typ) for c in fk.CHANNEL_BONES}
+
+    def finish(values):
+        out = values.copy()
+        for f in range(max(0, frame - before), min(len(values), frame + after + 1)):
+            u = ease(1 - (frame - f) / before) if f <= frame else ease(1 - (f - frame) / after)
+            out[f, 1] = values[f, 1] * (1 - u) + target[1] * u
+            for c in fk.CHANNEL_BONES:
+                R = _turn_between(bone.matrix_from_euler_xyz(values[f, c]), turns[c], u)
+                out[f, c] = bone.euler_xyz_from_matrix(R)
+        return out
+    return finish
 
 
 def _stance_pose(retarget, stance):
@@ -319,10 +386,19 @@ def with_attacks(pack, retarget, stance):
 
 def with_new_attacks(pack, retarget, stance):
     """The motion pack with NEW_ATTACKS appended from SPIN_ANIM on, and their previews."""
-    from .idle import with_appended
+    from .idle import mota, with_appended
+    from ..ttt2.petexy import animation
     start = _stance_pose(retarget, stance)
     shown = {}
     for k, (name, peak, frames, impact, hand, forward, origin) in enumerate(NEW_ATTACKS):
+        finish = None
+        if name in INTO:                                # (each animation appended moves the ones after the table)
+            index, frame, before, after = INTO[name]
+            o0, offsets = mota(pack)
+            target = animation.decode(pack, '>', o0 + offsets[index])
+            finish = blend_into(target['values'][0], target['type'], frame, before, after)
+            print('%s: blends into body animation %d at its frame %d (%d frames in, %d out)' % (
+                name, index, frame, before, after))
         pose = start
         if origin == 'crouch':                          # out of the 3+4 crouch
             from .idle import CROUCH
@@ -333,7 +409,7 @@ def with_new_attacks(pack, retarget, stance):
             an = hkx.animation(hkx.Packfile(open(os.path.join(retarget.folder, src), 'rb').read()))
             t = retime(an['frames'], src_peak, src_frames, src_impact)[origin[1]]
             pose = sample(an, retarget.sk, 60.0, [t])[0]
-        anim, hp, tp = _attack(retarget, pose, name, peak, frames, impact, hand, forward, stance)
+        anim, hp, tp = _attack(retarget, pose, name, peak, frames, impact, hand, forward, stance, finish)
         pack, index = with_appended(pack, anim)
         if index != SPIN_ANIM + k:
             raise ValueError('%s went to body animation %d, not %d' % (name, index, SPIN_ANIM + k))
@@ -341,6 +417,37 @@ def with_new_attacks(pack, retarget, stance):
         print('%s -> new body animation %d (%#x): %d frames, its frame %d at frame %d' % (
             name, index, 0x4000 + index, frames, peak, impact))
     return pack, shown
+
+
+def with_run(pack, retarget, stance, arc):
+    """The motion pack with the run's animations (RUN) appended from RUN_ANIM on."""
+    import struct
+    from .idle import STANCE_TURN, mota, with_appended
+    from ..ttt2.petexy import animation
+    common = arc.entry(*COMMON_MOTIONS)
+    count = struct.unpack_from('>I', common, 0xC)[0]
+    common_offsets = struct.unpack_from('>%dI' % count, common, 0x14)
+    stand = retarget.stand['values'][0][0]
+    retarget(RUN)                                       # its heading: the mean turn, without the stance's
+    yaw = retarget.yaws[RUN] - STANCE_TURN
+    half = RUN_CYCLE / 2
+    u = np.arange(RUN_START) / RUN_START
+    times = [half * u * u,                              # the start: from standing still up to the steps' speed
+             half * np.arange(RUN_STEP) / RUN_STEP, half + half * np.arange(RUN_STEP) / RUN_STEP]
+    start = _stance_pose(retarget, stance)
+    for k, ((where, index), t) in enumerate(zip(RUN_GROUND, times)):
+        o0, offsets = mota(pack)
+        src = (common, common_offsets[index]) if where == 'common' else (pack, o0 + offsets[index])
+        ground = animation.decode(src[0], '>', src[1])['values'][:, 0] - stand
+        if len(ground) != len(t):
+            raise ValueError('run animation %d: %d frames, the one it replaces %d' % (k, len(t), len(ground)))
+        anim, _, _ = retarget(RUN, times=t, yaw=yaw, ground=ground,
+                              blend_from=(start, RUN_START // 2) if k == 0 else None)
+        pack, at = with_appended(pack, anim)
+        if at != RUN_ANIM + k:
+            raise ValueError('run animation %d went to body animation %d, not %d' % (k, at, RUN_ANIM + k))
+        print('%s: run animation %d (body animation %d), %d frames, %.0f travel' % (RUN, k, at, len(t), ground[-1, 2]))
+    return pack
 
 
 def edit_moveset(m):
