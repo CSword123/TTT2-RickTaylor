@@ -29,6 +29,12 @@ ALO_END = b'AL_EFFECT\0'
 BODY_ANIM = 0x4000                        # a move's animation id: 0x4000 + body animation (0x8000 +: the common ones)
 
 
+# Marduk's items that show skin: their part models carry Marduk's own chest, arms or legs (the user saw his hairy chest
+# and arm pieces on Rick with Shirtless and the fundoshi). For Rick they draw nothing, so they show his own body.
+SKIN_ITEMS = {'wcm_upb_hadaka', 'wcm_upb_jk_nude', 'wcm_opi_oneshoulder', 'mar_opi_dlc_fundoshi',
+              'wcm_lob_jeans_pants_short', 'wcm_lob_wrestring_pants'}
+
+
 def item_database(donor_db):
     """Marduk's item database for Rick, items and all (Customize): only the default costume's parts are left out
     (itemdb.body_only's edit: Rick's body model has his own head, torso and jeans), every other item names Marduk's
@@ -38,7 +44,12 @@ def item_database(donor_db):
     instances = []
     for inst in info['children']:
         data = [c for c in inst['children'] if c['tag'] == 'Data']
-        if data and dict(data[0]['attrs']).get('EquipType') == itemdb.DEFAULT_COSTUME:
+        if dict(inst['attrs']).get('label') in SKIN_ITEMS:          # kept (the item lists index them), drawing nothing
+            inst = copy.deepcopy(inst)
+            for c in inst['children']:
+                if c['tag'] == 'Model':
+                    c['children'] = [g for g in c['children'] if g['tag'] != 'Group']
+        elif data and dict(data[0]['attrs']).get('EquipType') == itemdb.DEFAULT_COSTUME:
             inst = copy.deepcopy(inst)
             for c in inst['children']:
                 if c['tag'] == 'Model' and not any(g['tag'] == 'EffectGroup' for g in c['children']):

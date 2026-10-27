@@ -53,7 +53,8 @@ for m in portrait hud layouts; do .venv/bin/python -m ttt2rick.convert.$m <game 
 .venv/bin/python -m ttt2jen.motions work/ttt2/rick_slot/art/files/key_52494332.bin work/ttt2/rick_slot/files/ric.bon work/ttt2/jen/files/jen.bon work/ttt2/jen/files
 .venv/bin/python -m ttt2jen.slot <game folder> work/ttt2/jen work/ttt2/rick_slot work/ttt2/jen_slot
 .venv/bin/python -m ttt2rick.convert.voice <game folder> <splatterhouse assets/data> work/ttt2/rick_voice   # his grunts (se_Chr_ric)
-.venv/bin/python -m ttt2rick.ttt2.overlay <game folder> install work/ttt2/rick_slot/files work/ttt2/jen_slot/files work/ttt2/rick_voice/files
+.venv/bin/python -m ttt2rick.convert.panel <game folder> work/ttt2/panel   # their Customize costume panels
+.venv/bin/python -m ttt2rick.ttt2.overlay <game folder> install work/ttt2/rick_slot/files work/ttt2/jen_slot/files work/ttt2/rick_voice/files work/ttt2/panel/files
 ```
 
 Debugging single files:

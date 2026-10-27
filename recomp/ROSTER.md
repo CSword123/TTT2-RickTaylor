@@ -170,7 +170,10 @@ the A/B costume images; the panel's IsBusy native, 0x82570530, waits until that 
 (sub_82728B28: this +60 = id keys the item maps; sub_82725088 loads a BXML from data052 by another 63-key table). With
 these, and Marduk's item database for Rick, he can be dressed there; the fighter shown is Rick (his record). Ships
 with RICK_CUSTOMIZE=1 only: his costumes are Marduk's save entries. The menu natives are registered by name in
-sub_82572618 (name = r31 + offset from 0x8209EF60, function by lis/addi just before).
+sub_82572618 (name = r31 + offset from 0x8209EF60, function by lis/addi just before). The A/B preset costume panels come from
+sub_82413AC0 (by id, nothing above 58: now Marduk's for an added fighter); their pictures from each fighter's own
+`<code>/costume_panel.nut` (ttt2rick.convert.panel, sub_8227A078). Items that show skin are emptied for Rick
+(convert.slot SKIN_ITEMS: Marduk's chest, arms and legs came with them).
 
 Downed Rick could not be hit (fixed 2026-10-25): sub_822FB4F8 (player r3) takes a per-fighter body pointer by id
 from two 64-entry tables (0x82DD0A68; 0x82DD0B68 in down states 12-13) without a bound, so Rick's 64 read the second

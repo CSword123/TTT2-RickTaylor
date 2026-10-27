@@ -1233,8 +1233,13 @@ PPC_FUNC(sub_8272A5F0)                      // the costume panel's loader (this,
 
 extern "C" PPC_FUNC(__imp__sub_8227A078);
 PPC_FUNC(sub_8227A078)                      // id -> its costume panel pictures' key (63-entry table 0x8200C7D0; the
-{                                           // panel's IsBusy native waits until that file is loaded)
-    if (CustomizedAsDonor(ctx.r3.u32)) ctx.r3.u64 = kDonorId;
+{                                           // panel's IsBusy native waits until that file is loaded): an added
+    if (const Fighter* f = ById(ctx.r3.u32))   // fighter's own, <code>/costume_panel.nut (ttt2rick.convert.panel)
+    {
+        const std::string name = std::string(f->code) + "/costume_panel.nut";
+        ctx.r3.u64 = Crc(name.c_str());
+        return;
+    }
     __imp__sub_8227A078(ctx, base);
 }
 
@@ -1254,4 +1259,11 @@ PPC_FUNC(sub_82728B28)                      // (this, id r4): starts Customize's
         ctx.r4.u64 = kDonorId;
     }
     __imp__sub_82728B28(ctx, base);
+}
+
+extern "C" PPC_FUNC(__imp__sub_82413AC0);
+PPC_FUNC(sub_82413AC0)                      // (this, id r4, out list r5): the fighter's preset costumes (Customize's
+{                                           // A/B panels; a table by id at 0x8205DBD0, nothing above 58): Marduk's
+    if (CustomizedAsDonor(ctx.r4.u32)) ctx.r4.u64 = kDonorId;
+    __imp__sub_82413AC0(ctx, base);
 }
