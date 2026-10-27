@@ -20,6 +20,7 @@ from . import attacks, menus
 from .idle import GUARD_ANIM
 
 CODE, DONOR = 'ric', 'mar'
+CODE_B, MIRROR_DIR = 'rib', 'mirror_as_mar'       # costume B: Mirror Rick's code and converted files
 ID, DONOR_ID, DONOR_ROW = 64, 17, 17
 MOVESET_KEY = 0x52494331                  # rick_slot.cpp kMovesetKey
 MOTION_ROWS = 0x820A24B0                  # {motion pack, moveset, move list} by row, in the game image
@@ -114,6 +115,16 @@ def main(game, rick, out, art=None):
         files['%s.xml' % CODE] = item_database(arc.read_name(DONOR + '.xml'))
     fx, names = effects(arc)
     files.update(fx)
+    # costume B: Mirror Rick (ttt2rick.convert.rick ... mirror, next to Rick's converted files: MIRROR_DIR), under its
+    # own code (rick_slot.cpp kFighters codeB), with Rick's item database and effects
+    mirror = os.path.join(os.path.dirname(os.path.normpath(rick)), MIRROR_DIR)
+    if os.path.isdir(os.path.join(mirror, 'files')):
+        for ext in ('nud', 'nut', 'bon'):
+            files['%s.%s' % (CODE_B, ext)] = open(os.path.join(mirror, 'files', '%s.%s' % (DONOR, ext)), 'rb').read()
+        files['%s_blood.nut' % CODE_B] = open(os.path.join(mirror, 'files', '%s_blood.nut' % DONOR), 'rb').read()
+        files['%s.xml' % CODE_B] = files['%s.xml' % CODE]
+        files.update({CODE_B + path[len(CODE):]: data for path, data in fx.items()})
+        print('costume B: Mirror Rick (%s.*, from %s)' % (CODE_B, mirror))
     if art:
         root = os.path.join(art, 'files')
         for r, _, fs in os.walk(root):

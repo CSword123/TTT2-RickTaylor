@@ -44,6 +44,8 @@ def main():
     ap.add_argument('--p1', required=True)
     ap.add_argument('--p2', required=True)
     ap.add_argument('--frames', type=int, default=24)
+    ap.add_argument('--p2-button', default='A', help="the button player 2 confirms its fighters with (TTT2 picks the "
+                    "costume by it: try Y for costume B)")
     ap.add_argument('--out', default=os.path.join(PORT, 'vs.png'))
     a = ap.parse_args()
     teams = {'': a.p1.split(','), 'P2+': a.p2.split(',')}
@@ -76,7 +78,7 @@ def main():
         drive(frames=2, out='%s_pick%d.png' % (stem, member))
         for who, team in teams.items():
             if member < len(team):
-                press(who, 'A', 2)
+                press(who, a.p2_button if who == 'P2+' else 'A', 2)
     drive(frames=3, out='%s_stage.png' % stem)
     press('P2+', 'A')                                # player 2 picks the stage in VS Battle
     for i in range(a.frames):

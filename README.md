@@ -48,6 +48,7 @@ python3 recomp/install.py <TTT2-Recomp checkout>       # see recomp/README.md
 # share the title's portrait, HUD and layout containers; then each one's files
 for m in portrait hud layouts; do .venv/bin/python -m ttt2rick.convert.$m <game folder> work/ttt2/rick_slot/art; done
 .venv/bin/python -m ttt2rick.convert.idle <game folder> <splatterhouse assets/data> work/ttt2/rick_as_mar work/ttt2/rick_slot/art   # his own stance
+.venv/bin/python -m ttt2rick.convert.rick <game folder> work/mirrorrick/brawler work/mirrorrick/textures work/ttt2/mirror_as_mar mirror   # costume B: Mirror Rick
 .venv/bin/python -m ttt2rick.convert.slot <game folder> work/ttt2/rick_as_mar work/ttt2/rick_slot work/ttt2/rick_slot/art
 .venv/bin/python -m ttt2jen.extract <splatterhouse assets/data> work/jennifer && .venv/bin/python -m ttt2jen.convert <game folder> work/jennifer work/ttt2/jen   # her body
 .venv/bin/python -m ttt2jen.motions work/ttt2/rick_slot/art/files/key_52494332.bin work/ttt2/rick_slot/files/ric.bon work/ttt2/jen/files/jen.bon work/ttt2/jen/files

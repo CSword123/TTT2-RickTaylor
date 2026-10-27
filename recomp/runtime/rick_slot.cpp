@@ -66,9 +66,12 @@ struct Fighter
     uint32_t portraitFrame;         // its first frame in the select portraits' container (ttt2rick.convert.portrait)
     uint32_t hud[3];                // its HUD numbers: name, face 1p, face 2p (ttt2rick.convert.hud)
     int32_t column;                 // its grid cell's column in the top row
+    const char* codeB;              // costume B's code (its second record), with body files <codeB>.nud/.nut/.bon/.xml
+                                    // of their own (ttt2rick.convert.slot), or nullptr: costume B is costume A
     // at run time
     bool on;
-    uint32_t records, codeAddr;
+    uint32_t records, codeAddr, codeAddrB;
+    uint32_t masterCode;            // the text of its code in its chara master entry (MasterCodeText), or 0
     int32_t cell;
     uint32_t frames[2];             // its select portraits (guest addresses), when the lister has them
 };
@@ -77,9 +80,9 @@ struct Fighter
 // motions (her feet planted), her body on Nina's skeleton (with Nina's spring-bone file for the bust's OPT bone).
 Fighter kFighters[] = {
     { "ric", "Rick", 64, 140, 57, 0x52494332, 0x52494331, "ric.nud", "ric.nut", "ric_blood.nut", "ric.bon", "ric.xml",
-      nullptr, 118, { 259, 260, 261 }, 19 },
+      nullptr, 118, { 259, 260, 261 }, 19, "rib" },     // costume B: Mirror Rick
     { "jen", "Jennifer", 65, 142, 58, 0x4A454E32, 0x4A454E31, "jen.nud", "jen.nut", nullptr, "jen.bon", "jen.xml",
-      "nin.mop", 122, { 262, 263, 264 }, 20 },
+      "nin.mop", 122, { 262, 263, 264 }, 20, nullptr },
 };
 
 // Marduk's registry entries (sub_8244E618), replayed for an added fighter's code with its own body files' keys.
@@ -211,6 +214,11 @@ void Prepare(uint8_t* base)
         }
         f.codeAddr = Alloc(base, 16);
         std::memcpy(base + f.codeAddr, f.code, std::strlen(f.code) + 1);
+        if (f.codeB)
+        {
+            f.codeAddrB = Alloc(base, 16);
+            std::memcpy(base + f.codeAddrB, f.codeB, std::strlen(f.codeB) + 1);
+        }
         const uint32_t row = kMotionRows + 12 * f.row;
         GWrite32(base, row + 0, f.motions);
         GWrite32(base, row + 4, f.moveset);
@@ -256,6 +264,30 @@ void Prepare(uint8_t* base)
                          f.name, f.id, f.record0, f.record0 + 1, f.records, f.row, f.code, f.cell);
 }
 
+// The chara master (+4: a std::map by id, its head node at +8; node: left +0, parent +4, right +8, id +12; the head is
+// the nil node) keeps one
+// entry per id, and a loadPlayer command finds its fighter there by code: the text of the code string in the
+// fighter's entry (an inline std::string: text +0, length +16), for costume B's code to be swapped in at its loads.
+uint32_t MasterCodeText(uint8_t* base, uint32_t master, const Fighter& f)
+{
+    const uint32_t head = GRead32(base, master + 8);
+    uint32_t n = GRead32(base, head + 4);
+    for (int depth = 0; n && n != head && depth < 64; ++depth)
+    {
+        const uint32_t id = GRead32(base, n + 12);
+        if (id == f.id)
+        {
+            const size_t len = std::strlen(f.code);
+            for (uint32_t s = n + 16; s < n + 512; s += 4)
+                if (std::memcmp(base + s, f.code, len + 1) == 0 && GRead32(base, s + 16) == len)
+                    return s;
+            return 0;
+        }
+        n = GRead32(base, n + (f.id < id ? 0 : 8));
+    }
+    return 0;
+}
+
 void Register(PPCContext& ctx, uint8_t* base, uint32_t master)
 {
     Prepare(base);
@@ -264,7 +296,7 @@ void Register(PPCContext& ctx, uint8_t* base, uint32_t master)
     const uint32_t registry = GRead32(base, kRegistryPtr);
     const bool first = !g.registered;
     g.registered = true;
-    for (const Fighter& f : kFighters)
+    for (Fighter& f : kFighters)
     {
         if (!f.on) continue;
         // the chara master: {id, motion row, name, code}
@@ -272,29 +304,44 @@ void Register(PPCContext& ctx, uint8_t* base, uint32_t master)
         Call(ctx, base, sub_823011F8, { name, text });
         Call(ctx, base, sub_823011F8, { code, f.codeAddr });
         Call(ctx, base, sub_8247C480, { master, f.id, f.row, name, code });
-        if (!first) continue;
-        // the key registry: Marduk's entries, with the fighter's own body files
-        Call(ctx, base, sub_82429C58, { regCode, f.codeAddr });
-        for (const Reg& r : kDonorRegistry)
+        if (f.codeB)
         {
-            uint32_t k = r.key;
-            if (r.op == Op::File && r.type == 0) k = Crc(f.nud);
-            if (r.op == Op::File && r.type == 1) k = Crc(Bloody() && f.nutBlood ? f.nutBlood : f.nut);
-            if (r.op == Op::File && r.type == 2) k = Crc(f.bon);
-            if (r.op == Op::File && r.type == 3 && f.mop) k = Crc(f.mop);
-            if (r.op == Op::File && r.type == 6) k = Crc(f.xml);
-            GWrite32(base, key, k);
-            if (r.op == Op::Code) Call(ctx, base, sub_8247DDB0, { registry, regCode });
-            else if (r.op == Op::File) Call(ctx, base, sub_8247A628, { registry, regCode, r.type, key });
-            else Call(ctx, base, sub_82472220, { registry, regCode, r.type, key, r.index });
+            f.masterCode = MasterCodeText(base, master, f);
+            std::fprintf(stderr, "[added] %s: chara master code text at %08X\n", f.name, f.masterCode);
         }
-        Call(ctx, base, sub_82336FC0, { regCode, 0 });
-        std::fprintf(stderr, "[added] registered '%s' (registry %08X, chara master %08X)\n", f.code, registry, master);
+        if (!first) continue;
+        // the key registry: Marduk's entries, with the fighter's own body files (and costume B's code with its own)
+        for (int b = 0; b < (f.codeB ? 2 : 1); ++b)
+        {
+            const char* c = b ? f.codeB : f.code;
+            const std::string nud = std::string(c) + ".nud", nut = std::string(c) + ".nut";
+            const std::string nutBlood = std::string(c) + "_blood.nut", bon = std::string(c) + ".bon";
+            const std::string xml = std::string(c) + ".xml";
+            Call(ctx, base, sub_82429C58, { regCode, b ? f.codeAddrB : f.codeAddr });
+            for (const Reg& r : kDonorRegistry)
+            {
+                uint32_t k = r.key;
+                if (r.op == Op::File && r.type == 0) k = Crc(nud.c_str());
+                if (r.op == Op::File && r.type == 1) k = Crc(Bloody() && f.nutBlood ? nutBlood.c_str() : nut.c_str());
+                if (r.op == Op::File && r.type == 2) k = Crc(bon.c_str());
+                if (r.op == Op::File && r.type == 3 && f.mop) k = Crc(f.mop);
+                if (r.op == Op::File && r.type == 6) k = Crc(xml.c_str());
+                GWrite32(base, key, k);
+                if (r.op == Op::Code) Call(ctx, base, sub_8247DDB0, { registry, regCode });
+                else if (r.op == Op::File) Call(ctx, base, sub_8247A628, { registry, regCode, r.type, key });
+                else Call(ctx, base, sub_82472220, { registry, regCode, r.type, key, r.index });
+            }
+            Call(ctx, base, sub_82336FC0, { regCode, 0 });
+            std::fprintf(stderr, "[added] registered '%s' (registry %08X, chara master %08X)\n", c, registry, master);
+        }
     }
 }
 
 // The loader's stand-in (see sub_82331B50): an added fighter's records answer Marduk's id while it reads the code table.
 int g_proxy = 0;
+// The costume each pick (player, member) was made in: its select cursor's byte +380 + member (the costume panel's
+// 1 = A, 2 = B, then the saved costumes), noted with the pick (NotePick).
+uint8_t g_costumes[2][2] = {};
 } // namespace
 
 PPC_FUNC(sub_82468AD0)
@@ -486,12 +533,17 @@ PPC_FUNC(sub_82331B50)                      // (players, slot, record, ...): rea
     const Fighter* f = ByRecord(ctx.r5.u32);
     if (!f) { __imp__sub_82331B50(ctx, base); return; }
     const uint32_t slot = kCodes + 4 * kDonorId, donorCode = GRead32(base, slot);
-    GWrite32(base, slot, f->codeAddr);
+    const uint32_t s = ctx.r4.u32;          // slot: player + 2 * member
+    const bool costumeB = f->codeB && s < 4 && g_costumes[s % 2][s / 2] == 2;     // picked in costume B: its own code
+    GWrite32(base, slot, costumeB ? f->codeAddrB : f->codeAddr);
+    if (f->masterCode)                      // the command's code must match its chara master entry's (same length)
+        std::memcpy(base + f->masterCode, costumeB ? f->codeB : f->code, std::strlen(f->code));
     ++g_proxy;
     __imp__sub_82331B50(ctx, base);
     --g_proxy;
     GWrite32(base, slot, donorCode);
-    std::fprintf(stderr, "[added] loaded player %u as %s (result %u)\n", ctx.r4.u32, f->name, ctx.r3.u32);
+    std::fprintf(stderr, "[added] loaded player %u as %s%s (result %u)\n", ctx.r4.u32, f->name,
+                 costumeB ? " (costume B)" : "", ctx.r3.u32);
 }
 
 // The pick gate (sub_82276760: can id r3 be picked) needs no override since TTT2-Recomp 0.2.5 hooks it itself
@@ -536,7 +588,14 @@ uint32_t g_picks[2][2] = {};
 void NotePick(uint8_t* base, uint32_t cursor, uint32_t member, uint32_t id)
 {
     const uint32_t player = GRead32(base, cursor + 320);
-    if (player < 2 && member < 2) g_picks[player][member] = ById(id) ? id : 0;
+    if (player < 2 && member < 2)
+    {
+        g_picks[player][member] = ById(id) ? id : 0;
+        g_costumes[player][member] = base[cursor + 380 + member];
+        if (Traced())
+            std::fprintf(stderr, "[added] pick: player %u member %u in costume %u\n", player, member,
+                         g_costumes[player][member]);
+    }
 }
 }
 

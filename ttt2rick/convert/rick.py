@@ -567,7 +567,14 @@ def polygon(pos, nrm, uv, tris, bones, wts, mat):
                 materials=[mat])
 
 
-def convert(game, rick_dir, tex_dir, out):
+# Mirror Rick (characters/mirrorrick: Rick's rig and meshes, his own mirror-skin body and red head, Rick's jeans
+# and shoes): his head mesh is `mask`, his body texture is MIRROR_SKIN, which is not graded (its colours are his
+# design, not a skin tone)
+MIRROR_HEAD, MIRROR_SKIN = 'mask', 'mirror_rick_body_base.dds'
+MIRROR_EYES = {'l_eye_closedShape', 'r_eye_closedShape'}
+
+
+def convert(game, rick_dir, tex_dir, out, mirror=False):
     arc = Archives(game)
     donor = xbox.read_bone(arc.read_name(DONOR + '.bon'))
     dnames = [n[4:] if n.startswith('cha:') else n for n in donor['names']]
@@ -591,10 +598,17 @@ def convert(game, rick_dir, tex_dir, out):
     tmpl = templates(arc)
     mtex = {t['gidx']: t for t in xbox.read_nut(arc.read_name(DONOR + '.nut'))['textures']}
     theirs = skin_median(np.concatenate([xbox.decode_texture(mtex[g]).reshape(-1, 4) for g in MARDUK_SKIN]))
-    mine = skin_median(np.asarray(Image.open(os.path.join(tex_dir, SKIN_TEXTURE.replace('.dds', '.png'))).convert('RGBA')))
-    bank = TextureBank(skin_target=mine * (theirs / mine * RENDER_TRIM))
-    print('skin grade (Marduk / Rick x render trim, RGB):', np.round(theirs / mine * RENDER_TRIM, 3))
-    seam_scale(bank, info, data, tex_dir)
+    skin_texture, head_meshes, glow_meshes = ((MIRROR_SKIN, HEAD_MESHES | {MIRROR_HEAD} | MIRROR_EYES,
+                                                GLOW_MESHES | MIRROR_EYES) if mirror
+                                               else (SKIN_TEXTURE, HEAD_MESHES, GLOW_MESHES))
+    if mirror:
+        bank = TextureBank()
+    else:
+        mine = skin_median(np.asarray(Image.open(os.path.join(tex_dir, SKIN_TEXTURE.replace('.dds', '.png')))
+                                      .convert('RGBA')))
+        bank = TextureBank(skin_target=mine * (theirs / mine * RENDER_TRIM))
+        print('skin grade (Marduk / Rick x render trim, RGB):', np.round(theirs / mine * RENDER_TRIM, 3))
+        seam_scale(bank, info, data, tex_dir)
     def material(kind, base, normal, skin_sharing=False):
         mat, means, fmts = tmpl[kind]
         mat = json.loads(json.dumps(mat, default=lambda b: b.hex()))     # deep copy (bytes -> hex, restored below)
@@ -640,8 +654,8 @@ def convert(game, rick_dir, tex_dir, out):
         uv = data['mesh%d_uv' % k].astype(np.float64)
         tris = data['mesh%d_triangles' % k]
         bones, wts = skin_weights(k)
-        kind = 'overlay' if m['name'] in OVERLAY_MESHES else 'glow' if m['name'] in GLOW_MESHES \
-            else 'skin' if m['textures']['base'] == SKIN_TEXTURE or m['name'] in SKIN_MESHES \
+        kind = 'overlay' if m['name'] in OVERLAY_MESHES else 'glow' if m['name'] in glow_meshes \
+            else 'skin' if m['textures']['base'] == skin_texture or m['name'] in SKIN_MESHES \
             else 'cloth'
         base = os.path.join(tex_dir, m['textures']['base'].replace('.dds', '.png'))
         if m['name'] == BUCKLE and 'gloss' in m['textures']:
@@ -649,7 +663,7 @@ def convert(game, rick_dir, tex_dir, out):
             base = shiny(tex_dir, m['textures'], os.path.join(out, 'buckle_base.png'))
         mat = material(kind, base, m['textures'].get('normal'), m['name'] in SKIN_SHARING)
         poly = polygon(pos, nrm, uv, tris, bones, wts, mat)
-        single = bidx['ATAMA_jnt_assist' if m['name'] in HEAD_MESHES else 'KOSHI_jnt']
+        single = bidx['ATAMA_jnt_assist' if m['name'] in head_meshes else 'KOSHI_jnt']
         sph = nud.bounding_sphere(pos)
         meshes.append(dict(name='rick_' + m['name'], sphere=sph, center=sph[:3], sort_bias=0.0, zero=0,
                            boneflag=0x2c, singlebind=single, polys=[poly]))
@@ -703,6 +717,9 @@ def convert(game, rick_dir, tex_dir, out):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) == 6 and sys.argv[5] == 'mirror':
+        convert(*sys.argv[1:5], mirror=True)
+        sys.exit()
     if len(sys.argv) != 5:
         sys.exit(__doc__)
     convert(*sys.argv[1:])

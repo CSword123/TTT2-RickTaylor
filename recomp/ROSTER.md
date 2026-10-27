@@ -175,6 +175,18 @@ sub_82413AC0 (by id, nothing above 58: now Marduk's for an added fighter); their
 `<code>/costume_panel.nut` (ttt2rick.convert.panel, sub_8227A078). Items that show skin are emptied for Rick
 (convert.slot SKIN_ITEMS: Marduk's chest, arms and legs came with them).
 
+Select screen costumes (2026-10-27): X opens the A/B/saved-costume panel. Its pictures file is requested
+(sub_8227DB70) and the panel built once it is loaded (sub_8227ED80), both by the 63-key table 0x8200C7D0 read inline
+by id: an added fighter's entry (past the end) holds its own `<code>/costume_panel.nut` key while they run (without
+it the screen waited for good). The panel's choice is not a record (both A and B load the first one): the cursor
+keeps one costume byte per member at +380 (1 = A, 2 = B, then the saved costumes; +84 is the chosen panel entry,
++92 the entries, 12 bytes each). Costume B with its own body (Rick: Mirror Rick, code `rib`): the pick notes that
+byte (NotePick); sub_82331B50's slot is player + 2 * member (Solo fills member 1 with the same pick); a slot picked
+in B gets costume B's code in its loadPlayer command. That command finds its fighter in the chara master by code,
+and the master is a std::map by id (head node at +8; node id +12), one entry per id, so the text of the entry's code
+(an inline std::string) is rewritten to the code being loaded. Limit: two of the same fighter in different costumes
+load with whichever was loaded last.
+
 Downed Rick could not be hit (fixed 2026-10-25): sub_822FB4F8 (player r3) takes a per-fighter body pointer by id
 from two 64-entry tables (0x82DD0A68; 0x82DD0B68 in down states 12-13) without a bound, so Rick's 64 read the second
 table's first entry. Found by bisecting, in game, wrappers that show Marduk's id for Rick in each of the 445
