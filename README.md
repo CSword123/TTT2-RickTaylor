@@ -17,12 +17,13 @@ Why Rick/Jen in TTT2? To simply fulfill a dream of mine and for fun. I do not ow
 
 https://github.com/thatcalikid760/TTT2-Recomp
 https://github.com/shihabal3amri/tekken-tag-tournament-2-pc
+
 This Splatterhouse project was used to get Rick and Jen working for the mod:
 https://github.com/0c0de/splatterhouse-decomp
 And portions of Petexy's Wii U recomp was used to get Rick imported to 360 Tag 2:
 https://github.com/Petexy/Tekken-Tag-2-Ultimate-Edition
 
 Future goals:
--get stock Customization for Rick working
--bug fixes
--possibly integrating with Petexy's Wii U recomp
+  1. get stock Customization for Rick working
+  2. bug fixes
+  3. possibly integrating with Petexy's Wii U recomp
