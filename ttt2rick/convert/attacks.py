@@ -32,8 +32,8 @@ right-hand chain is his 2, 2,2, 2,2,1 (the user's call, 2026-10-26: the right ha
 f+2 carries him a little further than its footwork (LUNGE_EXTRA, the user's call, 2026-10-27).
 f+1+2 (in place of Marduk's Va_double) is Splatterhouse's barrage, its mashed X (BarragePunchA-H, atk_barrage01-04,
 right fist first, at its own speed): a press throws two, held 1+2 up to eight (BARRAGE), each a light mid.
-2 and 2,2 snap the head back standing (REACTIONS), so the next hit combos; the spin crumples, and the lariat (a mid)
-still catches the crumpling opponent (2,1 and 2,2,1,2 are natural combos in game). b+1 and its strings are
+2, 2,2 and the spin snap the head back standing (REACTIONS), so the next hit combos (the spin crumpled until
+2026-10-27, and the lariat swung over the crouched opponent). b+1 and its strings are
 Marduk's own again.
 
 The 3+4 crouch is Splatterhouse's RT crouch (ttt2rick.convert.idle CROUCH), and its moves Splatterhouse's moves off it
@@ -46,7 +46,10 @@ takedown (Va_spear, into his mount: Va_spear01, the opponent's Mt_ moves), its l
 DashAttackGrab, tackle_miss), carried as far as Marduk's (1821 units at its contact frame 24), so the takedown,
 which plays Marduk's own animations in step with the opponent's, starts where his would; the lunge blends into his
 mount's first pose by the frame it goes on to it (INTO).
+The lunge is a dive: Splatterhouse's physics carries him up through it, so it is lifted over its flight (DIVE).
 His run (a dash held on from a distance) is Splatterhouse's standard run (RUN, with_run) at TTT2's speed.
+u+1+2 is Splatterhouse's grab (B): a throw that heaves the opponent over his head and tosses them far forward
+(GRAB; its animations: ttt2rick.convert.grab).
 
 The spin gets Marduk's b+2's (Va_rp00B) two properties of its own (EXTRA): 0x81aa, which only that move has,
 on 12 frames before its hit and off 2 after it (the faint white streak along the swing), and 0x80f8 = 2 from the
@@ -103,17 +106,18 @@ SMASH_FRAME = 29                 # the straight's frame from which the smash com
 # alone it was still closing in, and whiffed in game)
 STARTUP = {}
 STARTUP_NEW = {'Va_rpbh_ric': (17, 19), 'Va_ttlplp_ric': (20, 22), 'Va_rpst_ric': (24, 25), 'Va_ram_ric': (16, 26),
-               'Va_sweep_ric': (18, 19), 'Va_lhay_ric': (17, 19), 'Va_lariat_ric': (20, 22), 'Va_fhay_ric': (16, 17),
+               'Va_sweep_ric': (18, 19), 'Va_lhay_ric': (17, 19), 'Va_lariat_ric': (18, 23), 'Va_fhay_ric': (16, 17),
                'Va_lbh_ric': (17, 19), 'Va_strl_ric': (18, 20), 'Va_smash_ric': (22, 24)}
 # damage of every hit-condition entry (Marduk's 2 10, Va_ttlprp 10, crouch f+1 16, f+2 22): the finishers do more
 DAMAGE = {'Va_ttlplp_ric': 16, 'Va_rpst_ric': 30, 'Va_ram_ric': 24, 'Va_lariat_ric': 22, 'Va_lbh_ric': 14,
           'Va_strl_ric': 14, 'Va_smash_ric': 25}
 # the frame a move ends (back to the stance), where its animation is longer than the copied move (Va_awtac ends at
 # 40, Va_sprp at 50): the ram's outro and the sweep's follow-through play out
-END = {'Va_ram_ric': 60, 'Va_sweep_ric': 58}
+SPEAR, SPEAR_CATCH, SPEAR_END = 'Va_spear', (22, 27), 90      # the takedown (see INTO below)
+END = {'Va_ram_ric': 60, 'Va_sweep_ric': 58, SPEAR: SPEAR_END}
 # automatic cancels left out of a copied move: Marduk's own variants of it, with his animation (Va_rpst00 goes to
 # Va_rpst00_H on hit (requirement 46), an elbow, and to Va_rpst00Chg on a tag change; Va_awtac has a 2 follow-up)
-DROP = {'Va_rpst_ric': ['Va_rpst00_H', 'Va_rpst00Chg'], 'Va_ram_ric': ['Va_awtacrp'],
+DROP = {'Va_rpst_ric': ['Va_rpst00_H', 'Va_rpst00Chg'], 'Va_ram_ric': ['Va_awtacrp'], 'Va_spear': ['Va_spear01'],
         'Va_smash_ric': ['Va_rpst00_H', 'Va_rpst00Chg']}
 # Marduk's body animation -> (Splatterhouse animation, its frame of full extension at 30 fps, Marduk's move that
 # plays it, its first active frame at 60 fps, frames: Marduk's less the startup taken off; the striking hand, the
@@ -148,11 +152,21 @@ NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20, 'L', FEET, None),              
                ('atk_barrage04.hkx', 9, 36, 9, 'L', FEET, None)]                 # 700 BarragePunchD, H: left
 # Marduk's moves given an appended animation (by its index in NEW_ATTACKS)
 ANIMS = {'Va_spear': SPIN_ANIM + 6}
-# appended animations that blend into one of Marduk's at the frame his move goes on to it: the takedown's lunge
-# (Va_spear) goes on to Va_spear01 (body animation 461, Marduk's mount) at its frame 24 on a hit, where Rick's lunge
-# pose cut into Marduk's (the user, 2026-10-27: smoother into the mount). (animation file -> (Marduk's body
-# animation, the frame, frames blended in before it, frames back out after it: a whiff plays on as Splatterhouse's))
-INTO = {'tackle_miss.hkx': (461, 24, 16, 16)}
+# appended animations that blend into one of Marduk's at the frame his move goes on to it (animation file ->
+# (Marduk's body animation, the frame, frames blended in before it, frames back out after it)). None now: the
+# takedown's lunge blended into body animation 461, which is not the mount but Va_spear01, Marduk's own lunge on
+# from a miss (see SPEAR)
+INTO = {}
+# the takedown (Va_spear, 3+4,1+2): Marduk's goes on at frame 24, caught or not, into Va_spear01 (his lunge carried
+# on, a second catch at 30-31, then Va_spear02), so a whiff dove and then lunged again as Marduk (the user,
+# 2026-10-27: two grabs; keep Splatterhouse's). Rick's catches only at SPEAR_CATCH (24 widened over the dive's
+# landing, for the second catch it loses) and a whiff plays tackle_miss to its end, getting up (SPEAR_END)
+# attacks Splatterhouse plays in the air: its character controller carries him up (the dash grab's state,
+# DashAttackGrab: movetype jump), so its animation, on the ground, only stretches him out flat (frames 4-10) and drops
+# him onto his chest by 13: he slid along the floor (the user, 2026-10-27: dive in the air as in Splatterhouse). Each
+# is lifted over its flight, (animation file -> (Havok frame he leaves the ground, the frame he lands, mm at the
+# top)), on a half sine
+DIVE = {'tackle_miss.hkx': (3.0, 13.5, 450.0)}
 # the run (a dash held on from a distance): Splatterhouse's standard run (nav_run, a 25-frame cycle at 30 fps, two
 # steps) in place of Marduk's, one step to each of his run moves' 16 frames (sRUN__01F and 03F play his body
 # animation 5, 02F the common motions' 0: the other step), and his run's start (sRUN__00F, the common motions' 93, 32
@@ -165,6 +179,7 @@ RUN_START = 32
 RUN_ANIM = SPIN_ANIM + len(NEW_ATTACKS)          # its three: the start, step A, step B (701-703)
 RUN_GROUND = [('common', 93), ('common', 0), ('body', 5)]   # the animations they replace, for their ground travel
 ANIMS.update({'sRUN__00F': RUN_ANIM, 'sRUN__02F': RUN_ANIM + 1, 'sRUN__01F': RUN_ANIM + 2, 'sRUN__03F': RUN_ANIM + 2})
+GRAB_ANIM = RUN_ANIM + len(RUN_GROUND)           # u+1+2, the grab (ttt2rick.convert.grab): reach, throw, victim
 COMMON_MOTIONS = ('data004.bin', 0)              # TTT2's common motions (a move's animation 0x8000 + index)
 # Rick's own moves: (name, the move copied, its body animation, hitbox from, after moves, button, the cancel's frame:
 # None: where the copied move's own cancel from `after` is; 'like': as the first `after` row of LIKE's)
@@ -195,6 +210,18 @@ BARRAGE_LENGTH = [31, 36, 31, 36]               # their frames, where each hit e
 NEW_MOVES += [(name, 'Va_rp00', BARRAGE_ANIM + k, hitbox, [after] if frame else [], 0x3 << 9, frame)
               if after else (name, 'Va_rp00', BARRAGE_ANIM + k, hitbox, [], 0x40000003, ('take', 'Va_double', 0x40))
               for name, k, hitbox, after, frame in BARRAGE]
+# u+1+2, Splatterhouse's grab (B; ttt2rick.convert.grab): Marduk's 1+3 (ThrmvLB2_00 -> Va_nagef_n, its victim
+# Va_nagef_y) copied, on the inputs of Marduk's u+1+2 (Co_jplp00, the common jumping double punch). The reach's catch
+# from the front goes on to Rick's throw, whose hit makes the opponent play his victim move (GRAB_FRONT); its catches
+# from the side and back stay Marduk's throws
+GRAB = [('Va_grab_ric', 'ThrmvLB2_00', GRAB_ANIM, 'ThrmvLB2_00', [], 0x40000003, ('take', 'Co_jplp00', 0x100)),
+        ('Va_toss_ric', 'Va_nagef_n', GRAB_ANIM + 1, 'Va_nagef_n', [], 0, None),
+        ('Va_toss_ric_y', 'Va_nagef_y', GRAB_ANIM + 2, 'Va_nagef_y', [], 0, None)]
+GRAB_FRONT = ('Va_nagef_n', 'Va_nagef_y')
+# a tapped u+1+2 starts the neutral jump (sJUMP_00_, sJUMP_0E_), whose own cancels send 1+2 in its first 8 frames
+# to Co_jplp00: those go to the grab too (the user, 2026-10-27: tapped, it came out as the jumping punch)
+GRAB_JUMP = 'Co_jplp00'
+NEW_MOVES += GRAB
 CHAIN = {'Va_brgA_ric': ('Va_brgB_ric', 11)}    # move -> (the move it goes on to by itself, at that frame)
 ONLY = [b[0] for b in BARRAGE]                  # moves whose cancel list (Marduk's 2's) keeps only the moves of Rick's
                                                 # own in it and its end
@@ -202,14 +229,17 @@ ONLY = [b[0] for b in BARRAGE]                  # moves whose cancel list (Mardu
 EXTRA = {'Va_ttlplp_ric': [(0x8001, 0x80f8, 2), (8, 0x81aa, 1), (24, 0x81aa, 0)]}
 BOUND = ['Va_ttlplp_ric']
 # move -> (its reaction to replace, the new one), by the reactions' normal-hit (default) moves: 2, 2,2 and 2,1 leave
-# the opponent standing (face hits: 30 frames after 2, 40 after 2,2 and 2,1), the spin crumples; f+2,1,1 (the left
+# the opponent standing (face hits: 30 frames after 2, 40 after 2,2 and 2,1), the spin as well; f+2,1,1 (the left
 # backhand) snaps the head back as f+2,2 (the right one) does (the user's call, 2026-10-27). A reaction move
 # without the bit 0x8 in its bitfield (Marduk's 2's sDm_KAOR27G_Va, and sDm_Rhd40GY, sDm_Lhd00(G) this file used)
 # shakes the screen as the opponent takes the hit; these have it, as the jab's and 1,2's (measured in game,
 # 2026-10-26: the user found 2,2 and 2,1 still shook)
+# The spin crumpled (sDm_KAKLcr) until 2026-10-27: crouched low, the opponent let the lariat (f+2,2,1,2) swing over
+# his head (the user saw it whiff; in game at point blank it missed Marduk), so it snaps the head back standing too,
+# 40 frames: the lariat hits 29 after it
 REACTIONS = {'Va_fhay_ric': ('sDm_KAOR27G_Va', 'sDm_IKAO00R'), 'Va_rpbh_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl'),
              'Va_ram_ric': ('sDm_Sty00_', 'sDw_KAO00_'),   # the ram knocks down (Va_awtac's only staggered)
-             'Va_lhay_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl'), 'Va_ttlplp_ric': ('sDm_KAKLcrG', 'sDm_KAKLcr'),
+             'Va_lhay_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl'), 'Va_ttlplp_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl'),
              'Va_lariat_ric': ('sDm_KAKLcrG', 'sDw_KAO00_'), 'Va_lbh_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl'),
              'Va_strl_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl')}
 # hit levels (low byte: 0x10f low, 0x217 mid, 0x512 high; 0x200000 marks a heavy hit, which shakes the screen: Marduk's
@@ -219,6 +249,13 @@ REACTIONS = {'Va_fhay_ric': ('sDm_KAOR27G_Va', 'sDm_IKAO00R'), 'Va_rpbh_ric': ('
 # moves without the extra property 0x8001, which Marduk's 2 and his Va_ttlprp (so its copies) have, as his power
 # moves (b+1, the headbutts, the stomp): it shakes the screen on a hit (measured in game, 2026-10-26, the
 # background's shift frame to frame over a burst of frames: 2 shook for 12 frames on a hit, the jab and 1,2 not)
+# hitboxes (two shapes: a bone, or a capsule between two; 09 TE_R, 08 UDE_R, 07 KATA_R) other than the copied move's:
+# the lariat swings the whole arm, a sphere on the hand and a capsule from it to the shoulder (as Marduk's
+# Thrmv_2ptN00), active 6 frames: pressed into the opponent at point blank, his hand and forearm (Va_rp00's) swung
+# past on the far side (seen in game, 2026-10-27, 2 misses in 3). Its arm chops down from overhead: the hand is at
+# 2.3 m at frame 18, 1.1 m at 20, 0.4 m at 22, so it is active from 18 (from 20, at i20, the arm was already under the
+# waist and 2 m out, past an opponent at point blank whose head the spin's reaction dips to 1.6 m)
+HITBOX = {'Va_lariat_ric': bytes.fromhex('09000907')}
 NO_SHAKE = ['Va_fhay_ric', 'Va_rpbh_ric', 'Va_lhay_ric', 'Va_ttlplp_ric', 'Va_lariat_ric', 'Va_lbh_ric', 'Va_strl_ric']
 HITLEVEL = {'Va_ram_ric': 0x200217, 'Va_rpbh_ric': 0x217, 'Va_ttlplp_ric': 0x217, 'Va_sweep_ric': 0x10f, 'Va_lhay_ric': 0x512,
             'Va_lariat_ric': 0x217, 'Va_lbh_ric': 0x217, 'Va_strl_ric': 0x217}
@@ -306,6 +343,8 @@ def _attack(retarget, start, name, peak, frames, impact, hand, forward, stance, 
     times = retime(an['frames'], peak, frames, impact)
     base = retarget.yaws[stance]
     kw = dict(times=times, blend_from=(start, BLEND_IN), finish=finish)
+    if name in DIVE:
+        kw['adjust'] = dive(times, *DIVE[name])
     if forward is not None:
         kw['ground'] = travel(frames, impact, forward, TRAVEL_UNTIL.get(name), name in STEADY)
     yaw = base
@@ -328,6 +367,19 @@ def _attack(retarget, start, name, peak, frames, impact, hand, forward, stance, 
         print('%s: aimed %.0f degrees (the %s hand now %.0f off)' % (name, np.degrees(off), hand,
                                                                      np.degrees(np.arctan2(x, z))))
     return out
+
+
+def dive(times, up, down, height):
+    """Retarget's adjust that lifts the whole body (Havok world, mm) by a half sine from Havok frame `up` to `down`
+    (times: the Havok frame of each output frame)."""
+    lift = height * np.sin(np.pi * np.clip((np.asarray(times) - up) / (down - up), 0, 1))
+
+    def adjust(G, names):
+        G = G.copy()
+        G[:, :, 1, 3] += lift[:len(G), None]
+        return G
+    print('dive: up %.0f mm at the top (Havok frames %.1f-%.1f)' % (height, up, down))
+    return adjust
 
 
 def _turn_between(Ra, Rb, u):
@@ -450,6 +502,52 @@ def with_run(pack, retarget, stance, arc):
     return pack
 
 
+def grab(m, made, names, cancel_list, own):
+    """The grab's moves (GRAB, already appended) joined up as Marduk's 1+3 is: the reach's front catch goes on to
+    Rick's throw, the throw's hit to his victim move (a reaction row of its own); Marduk's timed properties moved to
+    the same moments of Rick's animations (grab.frame_map), and each move's end where its animation ends."""
+    from . import grab as g
+    moves, cancels, reactions = m.tables['moves'], m.tables['cancels'], m.tables['reactions']
+    reach, throw, victim = (made[n[0]] for n in GRAB)
+    jump = names.index(GRAB_JUMP)                   # a tapped up starts the jump: its 1+2 in its first frames too
+    taken = 0
+    for r in cancels:
+        if r['move_id'] == jump and r['button'] == GRAB[0][5]:
+            r['move_id'] = reach
+            taken += 1
+    print('grab: takes %d rows of %s\'s 1+2 in the jump\'s start' % (taken, GRAB_JUMP))
+    rows = [dict(r) for r in cancel_list(reach)]
+    for r in rows:
+        if r['move_id'] == names.index(GRAB_FRONT[0]):
+            r['move_id'] = throw
+    moves[reach]['cancel'] = len(cancels)
+    cancels.extend(rows)
+    hit_end = lambda h: h['req'] is None or m.tables['requirements'][h['req']]['condition'] == 690
+    for h in own(throw, 'hit_condition', 'hit_conditions', hit_end):
+        r = reactions[h['reactions']] if h['reactions'] is not None else None
+        if r is not None and r['default'] == names.index(GRAB_FRONT[1]):
+            h['reactions'] = len(reactions)
+            reactions.append(dict(r, default=victim))
+    props = m.tables['extra_move_properties']
+    t = g.timeline()
+    for i, end in ((throw, t['throw']), (victim, t['victim'])):
+        if moves[i]['extraprops'] is None:
+            continue
+        rows = [dict(e) for _, e in m.iter_list('extra_move_properties', moves[i]['extraprops'],
+                                                 lambda e: e['frame'] == 0 and e['id'] == 0)]
+        for e in rows:                              # (Rick's throw is shorter than Marduk's: none past its end)
+            if (e['frame'] or e['id']) and e['frame'] < 0x4000:
+                e['frame'] = min(g.frame_map(e['frame']), end - 1)
+        moves[i]['extraprops'] = len(props)
+        props.extend(rows)
+    for i, end in ((reach, g.REACH_FRAMES), (throw, t['throw']), (victim, t['victim'])):
+        for r in own(i, 'cancel', 'cancels', lambda r: r['direction'] == 0x8000):
+            if r['direction'] == 0x8000:
+                r['win_start'] = r['start_frame'] = end
+    print('grab: u+1+2 reach (move %d) -> throw (%d, ends at %d) -> the opponent\'s (%d, ends at %d)' % (
+        reach, throw, t['throw'], victim, t['victim']))
+
+
 def edit_moveset(m):
     """Rick's moveset (a motbin.read of RIC1, its other changes made) rebuilt with ANIMS and NEW_MOVES: each new move
     appended (a copy, its own name, body animation and hitbox), and each move that gets a new follow-up given a copy
@@ -540,6 +638,7 @@ def edit_moveset(m):
         for r in own(index(name), 'cancel', 'cancels', lambda r: r['direction'] == 0x8000):
             if r['direction'] == 0x8000:
                 r['win_start'] = r['start_frame'] = end
+                r['win_end'] = max(r['win_end'], 32767)     # (0-0 on Marduk's takedown: at its animation's end)
         print('%s: ends at frame %d' % (name, end))
     for name, drop in DROP.items():
         i = made[name] if name in made else names.index(name)
@@ -547,6 +646,14 @@ def edit_moveset(m):
         moves[i]['cancel'] = len(cancels)
         cancels.extend(rows)
         print('%s: no cancels into %s' % (name, ', '.join(drop)))
+    i = names.index(SPEAR)
+    first, last = SPEAR_CATCH
+    for r in m.iter_list('cancels', moves[i]['cancel'], lambda r: r['direction'] == 0x8000):
+        r = r[1]
+        if r['direction'] == 0 and r['button'] == 0 and r['win_start'] == moves[i]['first_active']:
+            r['win_start'], r['win_end'], r['start_frame'] = first, last, first
+    moves[i]['first_active'], moves[i]['last_active'] = first, last
+    print('%s: catches at frames %d-%d, a miss plays out to %d' % (SPEAR, first, last, SPEAR_END))
     for name in ONLY:
         i = index(name)
         rows = [dict(r) for r in cancel_list(i) if r['direction'] == 0x8000 or r['move_id'] in made.values()]
@@ -564,6 +671,7 @@ def edit_moveset(m):
         moves[i]['cancel'] = len(cancels)
         cancels.extend(rows)
         print('%s: goes on to %s at frame %d' % (name, to, frame))
+    grab(m, made, names, cancel_list, own)
     # after NEW_MOVES: their copies keep the moves' old reactions
     reactions = m.tables['reactions']
     hit_end = lambda h: h['req'] is None or m.tables['requirements'][h['req']]['condition'] == 690   # no condition
@@ -587,6 +695,9 @@ def edit_moveset(m):
         props.extend([dict(frame=f, id=k, value=v) for f, k, v in added] + old + [end])
         print('%s: extra properties %s' % (name, ', '.join('%#x=%d at %s' % (k, v, 'start' if f == 0x8001 else f)
                                                            for f, k, v in added)))
+    for name, box in HITBOX.items():
+        moves[index(name)]['hitbox'] = box
+        print('%s: hitbox %s' % (name, box.hex()))
     for name, level in HITLEVEL.items():
         moves[index(name)]['hitlevel'] = level
         print('%s: hit level %#x' % (name, level))

@@ -13,6 +13,8 @@ your TTT2 install.
 - The TTT2 recomp, installed with its own installer (with Title Update 3), and run at least once.
 - Your Splatterhouse disc image: Xbox 360, USA (`Splatterhouse (US) (Xbox 360).iso`).
 - Python 3.9 or newer, with numpy and Pillow: `python -m pip install -r requirements.txt`
+- [FFmpeg](https://ffmpeg.org/download.html), with `ffmpeg` on the PATH (Windows: `winget install ffmpeg`; Linux:
+  your distribution's `ffmpeg` package). The installer uses it to match Rick's voice to the game's loudness.
 
 ## Install
 

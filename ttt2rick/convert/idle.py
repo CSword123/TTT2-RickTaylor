@@ -36,7 +36,7 @@ from ..splatterhouse import extract, hkx
 from ..ttt2 import fk, xbox
 from ..ttt2.archive import Archives
 from ..ttt2.petexy import animation, bone, motion
-from . import attacks, poses
+from . import attacks, grab, poses
 from . import rick as rickconv
 
 RICK_NIF_DIR = 'characters/rick_havok/xbox360'
@@ -293,6 +293,7 @@ def main(game, splatter, rick_out, out):
     pack, shown = attacks.with_attacks(pack, retarget, IDLE)
     pack, more = attacks.with_new_attacks(pack, retarget, IDLE)
     pack = attacks.with_run(pack, retarget, IDLE, arc)
+    pack = grab.with_grab(pack, retarget, IDLE, arc)
     pack = poses.with_poses(pack, retarget, IDLE)
     shown.update(more)
     os.makedirs(os.path.join(out, 'files'), exist_ok=True)

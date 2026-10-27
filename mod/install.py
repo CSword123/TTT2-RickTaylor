@@ -6,7 +6,8 @@ installer (the folder with the game's exe and its game\\ folder, Title Update 3 
     python install.py --recomp <folder> --iso <Splatterhouse (US) (Xbox 360).iso> [--no-jennifer] [--blood] [--yes]
     python install.py --recomp <folder> --uninstall    everything back as it was
 
-Needs Python 3.9+ with numpy and Pillow (pip install -r requirements.txt). Nothing of either game comes with the
+Needs Python 3.9+ with numpy and Pillow (pip install -r requirements.txt), and FFmpeg on the PATH (the voice step
+decodes Rick's grunts and Marduk's with it, to match their loudness). Nothing of either game comes with the
 mod: Rick, Jennifer, his moves and voice are made from your own Splatterhouse disc (the Xbox 360 USA disc, title
 4E4D07F0) and Marduk's files in your own TTT2 install. It
 1. reads the files it needs straight off the disc image (work/splatterhouse);
@@ -323,6 +324,9 @@ def main():
         import PIL  # noqa: F401
     except ImportError:
         raise SystemExit('numpy and Pillow are needed: %s -m pip install -r requirements.txt' % sys.executable)
+    if not a.uninstall and shutil.which('ffmpeg') is None:
+        raise SystemExit('FFmpeg is needed (ffmpeg on the PATH): https://ffmpeg.org/download.html, or your system\'s '
+                         'package (winget install ffmpeg, apt install ffmpeg, ...)')
     sys.path.insert(0, ROOT)
     (uninstall if a.uninstall else install)(a)
 
