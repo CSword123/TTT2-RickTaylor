@@ -15,7 +15,9 @@ Per fighter:
 - portrait_frame: its first frame in the select portraits' container (player 1, player 2; the bloody two after);
 - hud: its three numbers in the HUD container (name, face of player 1, face of player 2), and hud_letters: its
   name's letters as (UI row of a HUD name that has it, its core's columns in that name's texture);
-- cell: its select grid cell in the layouts (above `anchor`'s panel, in the top row): rick_slot.cpp's column.
+- cell: its select grid cell in the layouts (above `anchor`'s panel, in the top row): rick_slot.cpp's column;
+- panel_b (optional): work/art/<...>.png, costume B's picture in the costume panels (ttt2rick.convert.panel), when
+  costume B has a body of its own (Rick's: Mirror Rick, cut out of a capture of the Customize model viewer).
 """
 import os
 
@@ -39,6 +41,7 @@ class Fighter:
 RICK = Fighter(code='ric', name='RICK', picture='rick_taylor.png', clean=True,
                face=(466, 134, 98), icon=(0.50, 0.40, 0.30), hud_face=(0.46, 462, 0), portrait=(0.70, 459, 0), portrait_fringe=5,
                portrait_frame=118, hud=(259, 260, 261), cell={'anchor': 'edd', 'columns': 0, 'grid_row': 0},
+               panel_b='mirror_rick_panel.png',
                hud_letters=[(18, 74, 97), (9, 34, 40), (27, 97, 121), (18, 154, 179)])   # MARDUK JIN BRUCE MARDUK
 JEN = Fighter(code='jen', name='JENNIFER', picture='jennifer_willis.png', clean=False,
               face=(536, 92, 41), icon=(0.53, 0.40, 0.18), hud_face=(0.64, 532, 28), portrait=(1.12, 522, 28), portrait_fringe=1,

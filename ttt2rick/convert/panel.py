@@ -7,7 +7,8 @@ The title keeps each fighter's two in an NTXR file of its own, by a 63-entry key
 read by sub_8227A078); recomp/runtime/rick_slot.cpp gives an added fighter's id the key of its file here,
 `<code>/costume_panel.nut` (PANEL_NAME). Each picture is the fighter's picture, its blood cleaned off (Rick's), fitted
 to the panel's height on the stock panels' backdrop: per row, the colour at the panels' left and right edges (where
-no fighter stands), the median over every stock panel (black above, the floor's grey below).
+no fighter stands), the median over every stock panel (black above, the floor's grey below). Costume B's is the same
+picture, or the fighter's `panel_b` when costume B has a body of its own (Rick's Mirror Rick).
 Writes <out>/files/<code>/costume_panel.nut for ttt2rick.ttt2.overlay, and <code>_costume_panel.png to look at.
 """
 import os
@@ -62,9 +63,13 @@ def main(game, out):
         pic = picture.load(f.picture_path())
         pic = f.variants(pic)[0][0]                     # the clean picture
         rgba = panel(bg, pic)
+        b = getattr(f, 'panel_b', None)                 # costume B's own picture, or A's
+        rgba_b = panel(bg, picture.load(os.path.join(os.path.dirname(f.picture_path()), b))) if b else rgba
+        if b:
+            Image.fromarray(rgba_b).save(os.path.join(out, '%s_costume_panel_b.png' % f.code))
         textures = []
-        for j, t in enumerate(template['textures']):    # costume A and B: the same picture
-            new = nut.make_texture(rgba, FIRST_GIDX + 2 * k + j, fmt=t['fmt'], mips=1)
+        for j, t in enumerate(template['textures']):    # costume A and B
+            new = nut.make_texture(rgba_b if j else rgba, FIRST_GIDX + 2 * k + j, fmt=t['fmt'], mips=1)
             textures.append(dict(t, ext=None, **{key: new[key] for key in ('mips', 'gidx', 'w', 'h', 'fmt')}))
         data = xbox.write_nut(dict(template, textures=textures))
         path = os.path.join(out, 'files', PANEL_NAME % f.code)
