@@ -15,13 +15,13 @@ Customization for Rick is a goal but currently WIP.
 
 Why Rick/Jen in TTT2? To simply fulfill a dream of mine and for fun. I do not own the Splatterhouse IP nor Tekken so if a Bandai Namcop is reading this for the purpose of taking down recomp mods, please understand that I just want Rick Taylor in a Tekken game and i would purchase future official Tekken content with him in it.
 
-https://github.com/thatcalikid760/TTT2-Recomp/
+https://github.com/thatcalikid760/TTT2-Recomp
 https://github.com/shihabal3amri/tekken-tag-tournament-2-pc
 This Splatterhouse project was used to get Rick and Jen working for the mod:
 https://github.com/0c0de/splatterhouse-decomp
-And portions of Petexy's Wii U recomp was used to get Rick imported to 360 Tag 2
+And portions of Petexy's Wii U recomp was used to get Rick imported to 360 Tag 2:
 https://github.com/Petexy/Tekken-Tag-2-Ultimate-Edition
-S
+
 Future goals:
 -get stock Customization for Rick working
 -bug fixes
