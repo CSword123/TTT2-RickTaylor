@@ -79,24 +79,32 @@ LUNGES = {'atk_larriatpunch.hkx'}
 # travel added to an attack's footwork, eased in up to just after its hit (the user, 2026-10-26: the lariat should
 # carry him forward a bit more)
 LUNGE_EXTRA = {'atk_larriatpunch.hkx': 600.0}
-FOLLOW_UP_FRAME = 21             # 2's frame from which 2,2 and 2,1 come out (9 after its hit: they hit 26 after it,
+FOLLOW_UP_FRAME = 25             # f+2's frame from which f+2,2 and f+2,1 come out (9 after its hit: they hit 26 after it,
                                  # inside its 30-frame reaction)
 SPIN_FRAME = 28                  # 2,2's frame from which the spin comes out (11 after its hit)
-LARIAT_FRAME = 31                # the spin's frame from which the lariat comes out (11 after its hit)
+LARIAT_FRAME = 27                # the spin's frame from which the lariat comes out (7 after its hit: at 11, with
+                                 # i22, it sometimes came too late for the crumpling opponent)
+BACKFIST_FRAME = 28              # f+2,1's frame from which the backfist comes out (11 after its hit)
+STRAIGHT_FRAME = 34              # b+2's frame from which the straight comes out (12 after its hit: hits 30 after it,
+                                 # inside its 40-frame reaction)
+SMASH_FRAME = 29                 # the straight's frame from which the smash comes out (11 after its hit)
 # 2 is i12; 2,2 i17 from the cancel, so it hits 29 frames after 2, inside 2's 40-frame standing reaction; the spin
 # i20, 31 after 2,2 (its reaction 40 frames too). The ram's shoulder stays out from 16 to 26 (a charge: at 16-19
 # alone it was still closing in, and whiffed in game)
-STARTUP = {'Va_rp00': (12, 13)}
+STARTUP = {}
 STARTUP_NEW = {'Va_rpbh_ric': (17, 19), 'Va_ttlplp_ric': (20, 22), 'Va_rpst_ric': (24, 25), 'Va_ram_ric': (16, 26),
-               'Va_sweep_ric': (18, 19), 'Va_lhay_ric': (17, 19), 'Va_lariat_ric': (22, 24)}
+               'Va_sweep_ric': (18, 19), 'Va_lhay_ric': (17, 19), 'Va_lariat_ric': (20, 22), 'Va_fhay_ric': (16, 17),
+               'Va_lbh_ric': (17, 19), 'Va_strl_ric': (18, 20), 'Va_smash_ric': (22, 24)}
 # damage of every hit-condition entry (Marduk's 2 10, Va_ttlprp 10, crouch f+1 16, f+2 22): the finishers do more
-DAMAGE = {'Va_ttlplp_ric': 16, 'Va_rpst_ric': 30, 'Va_ram_ric': 18, 'Va_lariat_ric': 22}
+DAMAGE = {'Va_ttlplp_ric': 16, 'Va_rpst_ric': 30, 'Va_ram_ric': 18, 'Va_lariat_ric': 22, 'Va_lbh_ric': 14,
+          'Va_strl_ric': 14, 'Va_smash_ric': 25}
 # the frame a move ends (back to the stance), where its animation is longer than the copied move (Va_awtac ends at
 # 40, Va_sprp at 50): the ram's outro and the sweep's follow-through play out
 END = {'Va_ram_ric': 60, 'Va_sweep_ric': 58}
 # automatic cancels left out of a copied move: Marduk's own variants of it, with his animation (Va_rpst00 goes to
 # Va_rpst00_H on hit (requirement 46), an elbow, and to Va_rpst00Chg on a tag change; Va_awtac has a 2 follow-up)
-DROP = {'Va_rpst_ric': ['Va_rpst00_H', 'Va_rpst00Chg'], 'Va_ram_ric': ['Va_awtacrp']}
+DROP = {'Va_rpst_ric': ['Va_rpst00_H', 'Va_rpst00Chg'], 'Va_ram_ric': ['Va_awtacrp'],
+        'Va_smash_ric': ['Va_rpst00_H', 'Va_rpst00Chg']}
 # Marduk's body animation -> (Splatterhouse animation, its frame of full extension at 30 fps, Marduk's move that
 # plays it, its first active frame at 60 fps, frames: Marduk's less the startup taken off; the striking hand, the
 # forward travel)
@@ -113,27 +121,34 @@ SPIN_ANIM = 685                  # after the guard (ttt2rick.convert.idle GUARD_
 RAM_FILES = 'runram_begin.hkx+runram_loop.hkx+runram_outro.hkx'   # 15 + 16 + 26 frames: the shoulder out by 18
 NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20, 'L', FEET, None),                # 685 2,2,1: 360Punch (peak 14)
                ('atk_punchdown_r.hkx', 15, 79, 24, 'R', FEET, (0x11E, 12)),       # 686 b+2 held: HeavyPunch
-               ('atk_punchr_high.hkx', 10, 44, 12, 'R', FEET, None),              # 687 2: AttackPunchRightHigh
+               ('atk_punchr_high.hkx', 10, 48, 16, 'R', FEET, None),              # 687 f+2: AttackPunchRightHigh
                ('atk_backhand_r.hkx', 11, 66, 17, 'R', FEET, None),               # 688 2,2: AttackBackhandRight (whips through at 11)
                (RAM_FILES, 18, 64, 16, None, RAM, 'crouch'),                      # 689 3+4,1: RT+Y, the running ram
                ('runram_roundpunch.hkx', 15, 62, 18, 'R', FEET, 'crouch'),       # 690 3+4,2: RT+X, Sprint_AtkPunch
                ('tackle_miss.hkx', 12, 90, 24, None, LUNGE, 'crouch'),           # 691 3+4,1+2: RT+B, the lunge
-               ('atk_punchl_high.hkx', 10, 50, 17, 'L', FEET, None),              # 692 2,1: AttackPunchLeftHigh
-               ('atk_larriatpunch.hkx', 16, 75, 22, 'R', FEET, None)]             # 693 2,2,1,2: LariatPunch (right arm out at 16)
+               ('atk_punchl_high.hkx', 10, 50, 17, 'L', FEET, None),              # 692 f+2,1: AttackPunchLeftHigh
+               ('atk_larriatpunch.hkx', 16, 73, 20, 'R', FEET, None),             # 693 f+2,2,1,2: LariatPunch (right arm out at 16)
+               ('atk_backhand_l.hkx', 11, 66, 17, 'L', FEET, None),               # 694 f+2,1,1: AttackBackhandLeft (whips through at 11)
+               ('atk_punchstraight_l.hkx', 15, 60, 18, 'L', FEET, (0x11E, STRAIGHT_FRAME)),   # 695 b+2,1: StraightPunchLeft
+               ('atk_2handgroundpound.hkx', 17, 80, 22, 'R', FEET, None)]         # 696 b+2,1,1+2: Smash (fists down past the chest at 17)
 # Marduk's moves given an appended animation (by its index in NEW_ATTACKS)
-ANIMS = {'Va_rp00': SPIN_ANIM + 2, 'Va_spear': SPIN_ANIM + 6}
+ANIMS = {'Va_spear': SPIN_ANIM + 6}
 # Rick's own moves: (name, the move copied, its body animation, hitbox from, after moves, button, the cancel's frame:
 # None: where the copied move's own cancel from `after` is; 'like': as the first `after` row of LIKE's)
 LEFT_ARM = 'Va_lp00B'            # hitbox 0d0c: left hand and forearm (right: 0908, Va_rp00's 09)
 CROUCH_MOVES = ['Va_awKAM_st', 'Va_awKAM_', 'Va_awKAM_g', 'Va_awKAM_L', 'Va_awKAM_R']   # the crouch's own lists
 LIKE = 'Va_spear'                # the crouch's moves come out when its 1+2 does (frame 10 in, 28 in a sidestep)
-NEW_MOVES = [('Va_rpbh_ric', 'Va_ttlprp', SPIN_ANIM + 3, 'Va_rp00', ['Va_rp00'], 0x40000002, FOLLOW_UP_FRAME),
+NEW_MOVES = [('Va_fhay_ric', 'Va_rp00', SPIN_ANIM + 2, 'Va_rp00', [], 0x40000002, ('take', 'Va_Binta00', 0x40)),
+             ('Va_rpbh_ric', 'Va_ttlprp', SPIN_ANIM + 3, 'Va_rp00', ['Va_fhay_ric'], 0x40000002, FOLLOW_UP_FRAME),
              ('Va_ttlplp_ric', 'Va_ttlprp', SPIN_ANIM, LEFT_ARM, ['Va_rpbh_ric'], 0x40000001, SPIN_FRAME),
              ('Va_rpst_ric', 'Va_rpst00', SPIN_ANIM + 1, 'Va_rp00B', ['Va_rp00B'], 0x2 << 9, HOLD_FRAME),
              ('Va_ram_ric', 'Va_awtac', SPIN_ANIM + 4, 'Va_awtac', CROUCH_MOVES, 0x40000001, 'like'),
              ('Va_sweep_ric', 'Va_sprp', SPIN_ANIM + 5, 'Va_rp00', CROUCH_MOVES, 0x40000002, 'like'),
-             ('Va_lhay_ric', 'Va_ttlprp', SPIN_ANIM + 7, LEFT_ARM, ['Va_rp00'], 0x40000001, FOLLOW_UP_FRAME),
-             ('Va_lariat_ric', 'Va_ttlprp', SPIN_ANIM + 8, 'Va_rp00', ['Va_ttlplp_ric'], 0x40000002, LARIAT_FRAME)]
+             ('Va_lhay_ric', 'Va_ttlprp', SPIN_ANIM + 7, LEFT_ARM, ['Va_fhay_ric'], 0x40000001, FOLLOW_UP_FRAME),
+             ('Va_lariat_ric', 'Va_ttlprp', SPIN_ANIM + 8, 'Va_rp00', ['Va_ttlplp_ric'], 0x40000002, LARIAT_FRAME),
+             ('Va_lbh_ric', 'Va_ttlprp', SPIN_ANIM + 9, LEFT_ARM, ['Va_lhay_ric'], 0x40000001, BACKFIST_FRAME),
+             ('Va_strl_ric', 'Va_ttlprp', SPIN_ANIM + 10, LEFT_ARM, ['Va_rp00B'], 0x40000001, STRAIGHT_FRAME),
+             ('Va_smash_ric', 'Va_rpst00', SPIN_ANIM + 11, 'Va_rp00', ['Va_strl_ric'], 0x40000003, SMASH_FRAME)]
 # move -> extra properties added, (frame, id, value); frame 0x8001: from the move's start (as Marduk's b+2 has them)
 EXTRA = {'Va_ttlplp_ric': [(0x8001, 0x80f8, 2), (8, 0x81aa, 1), (24, 0x81aa, 0)]}
 BOUND = ['Va_ttlplp_ric']
@@ -142,19 +157,20 @@ BOUND = ['Va_ttlplp_ric']
 # without the bit 0x8 in its bitfield (Marduk's 2's sDm_KAOR27G_Va, and sDm_Rhd40GY, sDm_Lhd00(G) this file used)
 # shakes the screen as the opponent takes the hit; these have it, as the jab's and 1,2's (measured in game,
 # 2026-10-26: the user found 2,2 and 2,1 still shook)
-REACTIONS = {'Va_rp00': ('sDm_KAOR27G_Va', 'sDm_IKAO00R'), 'Va_rpbh_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl'),
+REACTIONS = {'Va_fhay_ric': ('sDm_KAOR27G_Va', 'sDm_IKAO00R'), 'Va_rpbh_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl'),
              'Va_ram_ric': ('sDm_Sty00_', 'sDw_KAO00_'),   # the ram knocks down (Va_awtac's only staggered)
              'Va_lhay_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl'), 'Va_ttlplp_ric': ('sDm_KAKLcrG', 'sDm_KAKLcr'),
-             'Va_lariat_ric': ('sDm_KAKLcrG', 'sDw_KAO00_')}
+             'Va_lariat_ric': ('sDm_KAKLcrG', 'sDw_KAO00_'), 'Va_lbh_ric': ('sDm_KAKLcrG', 'sDm_KAKLcr'),
+             'Va_strl_ric': ('sDm_KAKLcrG', 'sDm_IKAO_pl')}
 # hit levels (low byte: 0x10f low, 0x217 mid, 0x512 high; 0x200000 marks a heavy hit, which shakes the screen: Marduk's
 # haymakers and power moves have it, and Va_ttlprp's copies with it): none of the 2,2,1,2 string has it (the user
 # found its shakes excessive, 2026-10-26), the sweep a true low, the left haymaker a high like 2
 # moves without the extra property 0x8001, which Marduk's 2 and his Va_ttlprp (so its copies) have, as his power
 # moves (b+1, the headbutts, the stomp): it shakes the screen on a hit (measured in game, 2026-10-26, the
 # background's shift frame to frame over a burst of frames: 2 shook for 12 frames on a hit, the jab and 1,2 not)
-NO_SHAKE = ['Va_rp00', 'Va_rpbh_ric', 'Va_lhay_ric', 'Va_ttlplp_ric', 'Va_lariat_ric']
+NO_SHAKE = ['Va_fhay_ric', 'Va_rpbh_ric', 'Va_lhay_ric', 'Va_ttlplp_ric', 'Va_lariat_ric', 'Va_lbh_ric', 'Va_strl_ric']
 HITLEVEL = {'Va_rpbh_ric': 0x217, 'Va_ttlplp_ric': 0x217, 'Va_sweep_ric': 0x10f, 'Va_lhay_ric': 0x512,
-            'Va_lariat_ric': 0x217}
+            'Va_lariat_ric': 0x217, 'Va_lbh_ric': 0x217, 'Va_strl_ric': 0x217}
 # the frame by which an attack's travel is all done (default: a few frames after its hit): the ram runs on through
 # its loop (to frame 34, where runram_outro starts) instead of charging in place once it hit
 TRAVEL_UNTIL = {RAM_FILES: 34}
@@ -335,6 +351,15 @@ def edit_moveset(m):
         move['hitbox'] = moves[names.index(hitbox_from)]['hitbox']
         moves.append(move)
         made[name] = len(moves) - 1
+        if isinstance(frame, tuple) and frame[0] == 'take':     # its input: every row that went to `frame[1]` on
+            _, old, direction = frame                          # this button and direction now goes to it
+            taken = 0
+            for table in ('cancels', 'group_cancels'):
+                for r in m.tables[table]:
+                    if r['move_id'] == names.index(old) and r['button'] == button and r['direction'] == direction:
+                        r['move_id'] = len(moves) - 1
+                        taken += 1
+            print('%s (move %d, body animation %d) takes %d input rows of %s' % (name, len(moves) - 1, anim, taken, old))
         for after in afters:
             i = index(after)
             rows = [dict(r) for r in cancel_list(i)]
@@ -402,6 +427,18 @@ def edit_moveset(m):
     for name, level in HITLEVEL.items():
         moves[index(name)]['hitlevel'] = level
         print('%s: hit level %#x' % (name, level))
+    from .poses import FACE_MOVES, FACE_PROP
+    faced = 0
+    for i, mv in enumerate(moves[:len(names)]):           # Marduk's own (the appended ones have none)
+        if not names[i].startswith(FACE_MOVES) or mv['extraprops'] is None:
+            continue
+        rows = [dict(e) for _, e in m.iter_list('extra_move_properties', mv['extraprops'],
+                                                 lambda e: e['frame'] == 0 and e['id'] == 0)]
+        if any(e['id'] in (FACE_PROP, 0x8300, 0x82DB, 0x82DC) for e in rows):
+            mv['extraprops'] = len(props)
+            props.extend(e for e in rows if e['id'] not in (FACE_PROP, 0x8300, 0x82DB, 0x82DC))
+            faced += 1
+    print('face animation (%#x) taken off %d of Marduk\'s pose moves' % (FACE_PROP, faced))
     for name in NO_SHAKE:
         i = index(name)
         if moves[i]['extraprops'] is None:

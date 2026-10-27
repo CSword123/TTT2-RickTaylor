@@ -20,7 +20,7 @@ python -m ttt2rick.convert.idle <game folder> <Splatterhouse data folder> <conve
 Out: files/key_<RICK_MOTIONS>.bin, Marduk's motion pack with the standing animation (body animation STAND_ANIM,
 which Marduk's standing move Va_sKAM00_ plays as 0x4026) replaced by Rick's, his guard appended (GUARD_ANIM, which
 ttt2rick.convert.slot gives his standing guard moves), Marduk's 3+4 crouch replaced by his RT crouch (CROUCH) and his
-attacks in place of Marduk's or appended (ttt2rick.convert.attacks),
+attacks in place of Marduk's or appended (ttt2rick.convert.attacks), his intros and match win (ttt2rick.convert.poses),
 for his own motion row (rick_slot.cpp kRow, kRickMotions); and idle_preview.png / guard_preview.png /
 attack_<index>_preview.png (Havok's pose and the TTT2 skeleton's, side by side).
 """
@@ -36,7 +36,7 @@ from ..splatterhouse import extract, hkx
 from ..ttt2 import fk, xbox
 from ..ttt2.archive import Archives
 from ..ttt2.petexy import animation, bone, motion
-from . import attacks
+from . import attacks, poses
 from . import rick as rickconv
 
 RICK_NIF_DIR = 'characters/rick_havok/xbox360'
@@ -194,19 +194,23 @@ class Retarget:
         self.stand = marduk_stand(arc)
         self.yaws = {}
 
-    def __call__(self, name, frames=None, times=None, yaw=None, blend_from=None, ground=None):
+    def __call__(self, name, frames=None, times=None, yaw=None, blend_from=None, ground=None, adjust=None):
         """(raw animation, Havok joint positions per frame, TTT2 joint positions per frame) of Rick's Havok
         animation `name`, its first `frames` frames at FPS (all by default), or sampled at `times` (Havok frames).
         yaw: the root turn to take out (radians; default the animation's mean, kept in self.yaws[name]), or one per
         frame (an attack turned toward its target).
         blend_from: (Havok local pose, n): the first n frames blend from that pose into the animation.
-        ground: (frames, 3) added to channel 0, the ground displacement (z forward: a move's travel)."""
+        ground: (frames, 3) added to channel 0, the ground displacement (z forward: a move's travel).
+        adjust: a function (Havok world matrices (frames, n, 4, 4), joint names) -> world matrices, a pose change made
+        before retargeting (ttt2rick.convert.poses: the intro's head)."""
         sk, hidx, Gref, D, nidx, bon = self.sk, self.hidx, self.Gref, self.D, self.nidx, self.bon
         an = load_animation(self.folder, name, sk)
         local = sample(an, sk, FPS, times)[:frames]
         if blend_from is not None:
             local = blend_in(local, *blend_from)
         G = np.array([havok_worlds(sk, f) for f in local])
+        if adjust is not None:
+            G = adjust(G, sk['names'])
         bi = fk.bone_index(bon)
         Wbind = fk.world(bon, {}, bon['t'][0])
         scale = float(bon['scale'])
@@ -283,6 +287,7 @@ def main(game, splatter, rick_out, out):
                                                                              CROUCH_IN, CROUCH_OUT))
     pack, shown = attacks.with_attacks(pack, retarget, IDLE)
     pack, more = attacks.with_new_attacks(pack, retarget, IDLE)
+    pack = poses.with_poses(pack, retarget, IDLE)
     shown.update(more)
     os.makedirs(os.path.join(out, 'files'), exist_ok=True)
     open(os.path.join(out, 'files', 'key_%08x.bin' % RICK_MOTIONS), 'wb').write(pack)
