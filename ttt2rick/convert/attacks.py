@@ -29,6 +29,9 @@ right-hand chain is his 2, 2,2, 2,2,1 (the user's call, 2026-10-26: the right ha
 - 2,2,1,2: Splatterhouse's next X after the spin, the lariat (LariatPunch, atk_larriatpunch, right arm), a mid
   knockdown (Va_lariat_ric) lunging forward all the way (LUNGES), from the spin's frame LARIAT_FRAME, i22;
 - 2,1: the left haymaker (atk_punchl_high) after the right one (Va_lhay_ric, a high), from FOLLOW_UP_FRAME, i17.
+f+2 carries him a little further than its footwork (LUNGE_EXTRA, the user's call, 2026-10-27).
+f+1+2 (in place of Marduk's Va_double) is Splatterhouse's barrage, its mashed X (BarragePunchA-H, atk_barrage01-04,
+right fist first, at its own speed): a press throws two, held 1+2 up to eight (BARRAGE).
 2 and 2,2 snap the head back standing (REACTIONS), so the next hit combos; the spin crumples, and the lariat (a mid)
 still catches the crumpling opponent (2,1 and 2,2,1,2 are natural combos in game). b+1 and its strings are
 Marduk's own again.
@@ -77,8 +80,12 @@ PLANT_MARGIN = 20.0              # mm the free foot must be under the planted on
 # foot, which footwork read as 288 back by the hit): only their forward steps count
 LUNGES = {'atk_larriatpunch.hkx'}
 # travel added to an attack's footwork, eased in up to just after its hit (the user, 2026-10-26: the lariat should
-# carry him forward a bit more)
-LUNGE_EXTRA = {'atk_larriatpunch.hkx': 600.0}
+# carry him forward a bit more; 2026-10-27: f+2, the right haymaker, a little more)
+LUNGE_EXTRA = {'atk_larriatpunch.hkx': 600.0, 'atk_punchr_high.hkx': 300.0,
+               # the barrage's punches keep up with the opponent each one pushes back (Splatterhouse slides him to
+               # his target; in place, its second punch missed after a press and one held punch of eight)
+               'atk_barrage01.hkx': 200.0, 'atk_barrage02.hkx': 200.0, 'atk_barrage03.hkx': 200.0,
+               'atk_barrage04.hkx': 200.0}
 FOLLOW_UP_FRAME = 25             # f+2's frame from which f+2,2 and f+2,1 come out (9 after its hit: they hit 26 after it,
                                  # inside its 30-frame reaction)
 SPIN_FRAME = 28                  # 2,2's frame from which the spin comes out (11 after its hit)
@@ -130,7 +137,12 @@ NEW_ATTACKS = [('atk_punch_360.hkx', 14, 73, 20, 'L', FEET, None),              
                ('atk_larriatpunch.hkx', 16, 73, 20, 'R', FEET, None),             # 693 f+2,2,1,2: LariatPunch (right arm out at 16)
                ('atk_backhand_l.hkx', 11, 66, 17, 'L', FEET, None),               # 694 f+2,1,1: AttackBackhandLeft (whips through at 11)
                ('atk_punchstraight_l.hkx', 15, 60, 18, 'L', FEET, (0x11E, STRAIGHT_FRAME)),   # 695 b+2,1: StraightPunchLeft
-               ('atk_2handgroundpound.hkx', 17, 80, 22, 'R', FEET, None)]         # 696 b+2,1,1+2: Smash (fists down past the chest at 17)
+               ('atk_2handgroundpound.hkx', 17, 80, 22, 'R', FEET, None),         # 696 b+2,1,1+2: Smash (fists down past the chest at 17)
+               # f+1+2: the barrage (BarragePunchA-H), at Splatterhouse's speed (rate 2: a Havok frame a frame)
+               ('atk_barrage01.hkx', 10, 31, 10, 'R', FEET, None),               # 697 BarragePunchA, E: right
+               ('atk_barrage02.hkx', 12, 36, 12, 'L', FEET, None),               # 698 BarragePunchB, F: left
+               ('atk_barrage03.hkx', 9, 31, 9, 'R', FEET, None),                 # 699 BarragePunchC, G: right
+               ('atk_barrage04.hkx', 9, 36, 9, 'L', FEET, None)]                 # 700 BarragePunchD, H: left
 # Marduk's moves given an appended animation (by its index in NEW_ATTACKS)
 ANIMS = {'Va_spear': SPIN_ANIM + 6}
 # Rick's own moves: (name, the move copied, its body animation, hitbox from, after moves, button, the cancel's frame:
@@ -149,6 +161,22 @@ NEW_MOVES = [('Va_fhay_ric', 'Va_rp00', SPIN_ANIM + 2, 'Va_rp00', [], 0x40000002
              ('Va_lbh_ric', 'Va_ttlprp', SPIN_ANIM + 9, LEFT_ARM, ['Va_lhay_ric'], 0x40000001, BACKFIST_FRAME),
              ('Va_strl_ric', 'Va_ttlprp', SPIN_ANIM + 10, LEFT_ARM, ['Va_rp00B'], 0x40000001, STRAIGHT_FRAME),
              ('Va_smash_ric', 'Va_rpst00', SPIN_ANIM + 11, 'Va_rp00', ['Va_strl_ric'], 0x40000003, SMASH_FRAME)]
+# f+1+2, the barrage: Splatterhouse's BarragePunchA-H (mashed X), right and left in turn. A takes Marduk's f+1+2
+# (Va_double) and ends in B (CHAIN), so a press throws two; each next one comes out while 1+2 is held (0x3 << 9) at
+# Splatterhouse's frame of that transition (BarragePunchB -> C at 15, C -> D 12, D -> E 14, E -> F 11, F -> G 15,
+# G -> H 12; A -> B 11), up to H, eight in all
+BARRAGE = [('Va_brgA_ric', 0, 'Va_rp00', None, None), ('Va_brgB_ric', 1, LEFT_ARM, 'Va_brgA_ric', None),
+           ('Va_brgC_ric', 2, 'Va_rp00', 'Va_brgB_ric', 15), ('Va_brgD_ric', 3, LEFT_ARM, 'Va_brgC_ric', 12),
+           ('Va_brgE_ric', 0, 'Va_rp00', 'Va_brgD_ric', 14), ('Va_brgF_ric', 1, LEFT_ARM, 'Va_brgE_ric', 11),
+           ('Va_brgG_ric', 2, 'Va_rp00', 'Va_brgF_ric', 15), ('Va_brgH_ric', 3, LEFT_ARM, 'Va_brgG_ric', 12)]
+BARRAGE_ANIM = SPIN_ANIM + 12                   # its four animations (NEW_ATTACKS 697-700)
+BARRAGE_LENGTH = [31, 36, 31, 36]               # their frames, where each hit ends unless the next comes
+NEW_MOVES += [(name, 'Va_rp00', BARRAGE_ANIM + k, hitbox, [after] if frame else [], 0x3 << 9, frame)
+              if after else (name, 'Va_rp00', BARRAGE_ANIM + k, hitbox, [], 0x40000003, ('take', 'Va_double', 0x40))
+              for name, k, hitbox, after, frame in BARRAGE]
+CHAIN = {'Va_brgA_ric': ('Va_brgB_ric', 11)}    # move -> (the move it goes on to by itself, at that frame)
+ONLY = [b[0] for b in BARRAGE]                  # moves whose cancel list (Marduk's 2's) keeps only the moves of Rick's
+                                                # own in it and its end
 # move -> extra properties added, (frame, id, value); frame 0x8001: from the move's start (as Marduk's b+2 has them)
 EXTRA = {'Va_ttlplp_ric': [(0x8001, 0x80f8, 2), (8, 0x81aa, 1), (24, 0x81aa, 0)]}
 BOUND = ['Va_ttlplp_ric']
@@ -171,6 +199,16 @@ REACTIONS = {'Va_fhay_ric': ('sDm_KAOR27G_Va', 'sDm_IKAO00R'), 'Va_rpbh_ric': ('
 NO_SHAKE = ['Va_fhay_ric', 'Va_rpbh_ric', 'Va_lhay_ric', 'Va_ttlplp_ric', 'Va_lariat_ric', 'Va_lbh_ric', 'Va_strl_ric']
 HITLEVEL = {'Va_rpbh_ric': 0x217, 'Va_ttlplp_ric': 0x217, 'Va_sweep_ric': 0x10f, 'Va_lhay_ric': 0x512,
             'Va_lariat_ric': 0x217, 'Va_lbh_ric': 0x217, 'Va_strl_ric': 0x217}
+# the barrage's hits: active from the fist's full extension for 3 frames, ending with their animations, light
+# (a press's two 5 each, the held ones 4: 34 for all eight), each a head snap that holds the opponent for the next
+# one (as 2's), and no screen shake
+for _name, _k, _, _, _ in BARRAGE:
+    _peak = [10, 12, 9, 9][_k]
+    STARTUP_NEW[_name] = (_peak, _peak + 2)
+    END[_name] = BARRAGE_LENGTH[_k]
+    DAMAGE[_name] = 5 if _name in ('Va_brgA_ric', 'Va_brgB_ric') else 4
+    REACTIONS[_name] = ('sDm_KAOR27G_Va', 'sDm_IKAO00R')
+    NO_SHAKE.append(_name)
 # the frame by which an attack's travel is all done (default: a few frames after its hit): the ram runs on through
 # its loop (to frame 34, where runram_outro starts) instead of charging in place once it hit
 TRAVEL_UNTIL = {RAM_FILES: 34}
@@ -401,6 +439,23 @@ def edit_moveset(m):
         moves[i]['cancel'] = len(cancels)
         cancels.extend(rows)
         print('%s: no cancels into %s' % (name, ', '.join(drop)))
+    for name in ONLY:
+        i = index(name)
+        rows = [dict(r) for r in cancel_list(i) if r['direction'] == 0x8000 or r['move_id'] in made.values()]
+        moves[i]['cancel'] = len(cancels)
+        cancels.extend(rows)
+        mine = {v: k for k, v in made.items()}
+        print('%s: cancels only into %s' % (name, ', '.join(mine.get(r['move_id'], '%#x' % r['move_id'])
+                                                            for r in rows)))
+    for name, (to, frame) in CHAIN.items():         # an automatic cancel (no button, no requirement: req 0, as the
+        i = index(name)                             # button rows'), before the move's end row; an end row that goes
+        rows = [dict(r) for r in cancel_list(i)]    # to a move only does so at the move's end
+        end = next(k for k, r in enumerate(rows) if r['direction'] == 0x8000)
+        rows.insert(end, dict(rows[end], direction=0, button=0, req=0, extradata=0xe, win_start=1, win_end=frame,
+                              start_frame=frame, move_id=index(to)))
+        moves[i]['cancel'] = len(cancels)
+        cancels.extend(rows)
+        print('%s: goes on to %s at frame %d' % (name, to, frame))
     # after NEW_MOVES: their copies keep the moves' old reactions
     reactions = m.tables['reactions']
     hit_end = lambda h: h['req'] is None or m.tables['requirements'][h['req']]['condition'] == 690   # no condition
