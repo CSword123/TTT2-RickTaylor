@@ -36,6 +36,9 @@ CLEAN = {'rick_lowerbody_base.png': (0.25, 0.38, False), 'rick_globeshoes_base.p
 SKIN = {'mirror_rick_body_base.png': (0.12, 0.30)}    # texture -> redness ramp (clean_skin); red from 60 to 100
 PRINT_RADIUS = 3                        # pixels around which print makes a pixel part of the print area
 MAJORITY_RADIUS = 6                     # pixels (shoes, 256 x 256)
+LIGHT_CLOTH = 140                       # mean brightness from which a clean pixel of the jeans' map is light cloth
+DARK_NEARER = 4                         # how much nearer dark cloth must be for a bright jeans stain to be on it
+BRIGHT_BLOOD = 90                       # a stain's red from which it is bright (fresh: the cream band's)
 LIGHT_STAIN = 120                       # a shoe stain's red from which it lies on white, whatever is around
 DARK_STAIN = 60                         # and under which, with no clean pixel around, on black
 
@@ -133,7 +136,17 @@ def clean(rgba, ramp=(0.25, 0.38, False)):
                        np.where(under == 1, np.maximum(r, 0.8 * colour[..., 0]), r))      # no dark specks on white
         filled = colour * (lum / np.maximum(colour[..., 0], 1.0))[..., None]
     else:
-        filled = fill(rgb, clean_px)[0]
+        # light cloth (the underwear's cream waistband) and dark (denim, the belt loops) each filled from its own:
+        # filled from everything around, the band's stains took the black belt strip's colour beside it (the user
+        # saw it, 2026-10-27). A bright stain is light cloth unless dark cloth is clearly nearer, a dark one the nearer
+        # cloth (fill's nearness: the band's left half is all blood, so a majority of the pixels around went to the
+        # belt strip beside it)
+        light = rgb.mean(-1) >= LIGHT_CLOTH
+        fills = [fill(rgb, m) for m in (clean_px & ~light, clean_px & light)]
+        bias = np.where(rgb[..., 0] >= BRIGHT_BLOOD, DARK_NEARER, 1.0)   # (dark, dried drops: on the denim)
+        under = (fills[1][1] * bias >= fills[0][1]).astype(int)
+        fills = [f for f, _ in fills]
+        filled = np.choose(under[..., None], fills)
     out = a.copy()
     out[..., :3] = np.clip(rgb * (1 - w[..., None]) + filled * w[..., None] + 0.5, 0, 255).astype(np.uint8)
     if ramp[2]:

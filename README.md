@@ -29,6 +29,20 @@ files, plus patches for the recomp.
 | Splatterhouse moves (Havok `.hkx` animations -> TTT2 moves) | **in progress**: `ttt2rick/convert/attacks.py` (each punch travels by its own footwork) |
 | Rick's voice: Splatterhouse's grunts (XMA2 copied, not re-encoded) in a bank of his own | **done**: `ttt2rick/convert/voice.py`, `recomp/runtime/rick_voice.cpp` |
 
+## The mod (for players)
+
+`mod/` makes Rick a drop-in mod for a stock recomp (thatcalikid760's or shihabal3amri's): `mod/install.py` asks for
+the recomp's folder and the player's Splatterhouse (USA) disc image, reads the files it needs off the disc, runs the
+conversion below and installs the result into the title update overlay, with the mod's loader `winmm.dll` next to the
+exe. The loader (`mod/loader`) compiles the same hooks as `recomp/runtime/` into a DLL and detours the recomp's own
+functions at start (no rebuilt exe); `ttt2rick.ini` next to the exe turns Rick, Jennifer and the blood on or off.
+Players' instructions: `mod/README.md`.
+
+```
+mod/loader/build.sh third_party/xwin/sysroot        # winmm.dll (clang-cl + xwin, as recomp/linux/build.sh)
+python3 mod/package.py                              # dist/TTT2-RickTaylor-mod.zip: what players download
+```
+
 ## Use
 
 ```

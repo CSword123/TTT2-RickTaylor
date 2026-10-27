@@ -1,6 +1,6 @@
 // The added fighters, each with a roster slot of its own: Rick Taylor and Jennifer Willis (TTT2-RickTaylor project;
 // design after Petexy's Wii U port, whose runtime/src/title/roster.cpp does this for its character packs).
-// TTT2_RICK=1 turns them on (TTT2_JEN=0 leaves Jennifer out).
+// TTT2_RICK=1 turns them on (TTT2_JEN=0 leaves Jennifer out); or the mod's ttt2rick.ini (rick_settings.h).
 //
 // Each added fighter (kFighters) has an internal id from 64 on (the title's ids end at 62; 63 means random/none), two
 // records from 140 on (copies of Marduk's, held here), a motion row no record uses, a code and a select grid cell in
@@ -12,6 +12,7 @@
 // Addresses: recomp/ROSTER.md.
 #include "kernel_shared.h"
 #include "guest_heap.h"
+#include "rick_settings.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -107,13 +108,12 @@ constexpr Reg kDonorRegistry[] = {
 
 bool Env(const char* name, bool otherwise)
 {
-    const char* e = std::getenv(name);
-    return e && *e ? *e == '1' : otherwise;
+    return RickSetting(name, otherwise);
 }
 
 bool On()
 {
-    static const bool on = Env("TTT2_RICK", false);
+    static const bool on = Env("TTT2_RICK", kRickByDefault);
     return on;
 }
 
@@ -342,6 +342,16 @@ int g_proxy = 0;
 // The costume each pick (player, member) was made in: its select cursor's byte +380 + member (the costume panel's
 // 1 = A, 2 = B, then the saved costumes), noted with the pick (NotePick).
 uint8_t g_costumes[2][2] = {};
+// The added fighter each pick (player, member) is (its id; 0: none), noted with the pick (NotePick).
+uint32_t g_picks[2][2] = {};
+// Each load slot (player + 2 * member) in costume B (sub_82331B50 decides it; sub_82487858 loads it).
+bool g_slotB[4] = {};
+// The chara master entry's code text (Fighter::masterCode) as `code` (same length as the fighter's own).
+void SetMasterCode(uint8_t* base, const Fighter& f, const char* code)
+{
+    for (size_t i = 0, n = std::strlen(f.code); i < n; ++i)
+        base[f.masterCode + i] = uint8_t(code[i]);
+}
 } // namespace
 
 PPC_FUNC(sub_82468AD0)
@@ -534,16 +544,46 @@ PPC_FUNC(sub_82331B50)                      // (players, slot, record, ...): rea
     if (!f) { __imp__sub_82331B50(ctx, base); return; }
     const uint32_t slot = kCodes + 4 * kDonorId, donorCode = GRead32(base, slot);
     const uint32_t s = ctx.r4.u32;          // slot: player + 2 * member
-    const bool costumeB = f->codeB && s < 4 && g_costumes[s % 2][s / 2] == 2;     // picked in costume B: its own code
-    GWrite32(base, slot, costumeB ? f->codeAddrB : f->codeAddr);
-    if (f->masterCode)                      // the command's code must match its chara master entry's (same length)
-        std::memcpy(base + f->masterCode, costumeB ? f->codeB : f->code, std::strlen(f->code));
+    bool costumeB = f->codeB && s < 4 && g_costumes[s % 2][s / 2] == 2;           // picked in costume B: its own code
+    // P1 and P2 never show the fighter in the same costume (the user's call, 2026-10-27): player 2's is the other
+    // one of player 1's (A for B, B for A or a saved costume)
+    if (f->codeB && s < 4 && s % 2 == 1)
+        for (uint32_t m = 0; m < 2; ++m)
+            if (g_picks[0][m] == f->id && (g_costumes[0][m] == 2) == costumeB)
+            {
+                costumeB = !costumeB;
+                if (g_slotB[s] != costumeB)         // (the commands are made again and again: once per change)
+                    std::fprintf(stderr, "[added] player 2's %s in costume %s: player 1 has the other\n", f->name,
+                                 costumeB ? "B" : "A");
+                break;
+            }
+    // the command names the fighter's own code (its chara master entry's: the command finds the fighter's id by it);
+    // costume B's body comes with the slot's load (sub_82487858)
+    GWrite32(base, slot, f->codeAddr);
+    if (s < 4) g_slotB[s] = costumeB;
     ++g_proxy;
     __imp__sub_82331B50(ctx, base);
     --g_proxy;
     GWrite32(base, slot, donorCode);
     std::fprintf(stderr, "[added] loaded player %u as %s%s (result %u)\n", ctx.r4.u32, f->name,
                  costumeB ? " (costume B)" : "", ctx.r3.u32);
+}
+
+// A load slot's fighter (sub_82487858: loader r3, slot r4 (player + 2 * member), ..., id r10): its chara master entry
+// by id (sub_8247C638) is copied, and the slot loads the body files of the copy's code. The master has one entry per
+// id, so while a slot in costume B is set up, the entry's code is costume B's (Mirror Rick's 'rib'), then the
+// fighter's own again: each slot gets its own body, two Ricks in different costumes at once (found with
+// TTT2_DATAWATCH on the entry's code text: std::string::assign from the entry's copy, sub_824724C8, called here).
+extern "C" PPC_FUNC(__imp__sub_82487858);
+PPC_FUNC(sub_82487858)
+{
+    const Fighter* f = ById(ctx.r10.u32);
+    const uint32_t s = ctx.r4.u32;
+    if (!(f && f->masterCode && s < 4 && g_slotB[s])) { __imp__sub_82487858(ctx, base); return; }
+    SetMasterCode(base, *f, f->codeB);
+    __imp__sub_82487858(ctx, base);
+    SetMasterCode(base, *f, f->code);
+    std::fprintf(stderr, "[added] load slot %u: %s in costume B\n", s, f->name);
 }
 
 // The pick gate (sub_82276760: can id r3 be picked) needs no override since TTT2-Recomp 0.2.5 hooks it itself
@@ -584,12 +624,12 @@ PPC_FUNC(sub_82590690)                      // (holder r3, row r4): its three re
 // The picks, as the select screen commits them (player, member): the id whose member byte the title's copies cap
 // at 62 (sub_822815E0). A select cursor (player object) has its player at +320 and the members picked so far at +340.
 namespace {
-uint32_t g_picks[2][2] = {};
 void NotePick(uint8_t* base, uint32_t cursor, uint32_t member, uint32_t id)
 {
     const uint32_t player = GRead32(base, cursor + 320);
     if (player < 2 && member < 2)
     {
+        if (member == 0) g_picks[player][1] = 0;        // (Solo: no second pick; not a team's from before)
         g_picks[player][member] = ById(id) ? id : 0;
         g_costumes[player][member] = base[cursor + 380 + member];
         if (Traced())
@@ -1358,3 +1398,4 @@ PPC_FUNC(sub_82413AC0)                      // (this, id r4, out list r5): the f
     if (CustomizedAsDonor(ctx.r4.u32)) ctx.r4.u64 = kDonorId;
     __imp__sub_82413AC0(ctx, base);
 }
+

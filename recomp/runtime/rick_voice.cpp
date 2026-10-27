@@ -15,6 +15,7 @@
 // with its own sound ids, and those sound ids in an extended sound table (copies of Marduk's entries, its bank).
 #include "kernel_shared.h"
 #include "guest_heap.h"
+#include "rick_settings.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -48,7 +49,7 @@ Voice kVoices[] = {
 
 bool On()
 {
-    static const bool on = [] { const char* e = std::getenv("TTT2_RICK"); return e && *e == '1'; }();
+    static const bool on = RickSetting("TTT2_RICK", kRickByDefault);
     return on;
 }
 

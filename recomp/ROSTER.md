@@ -182,10 +182,14 @@ it the screen waited for good). The panel's choice is not a record (both A and B
 keeps one costume byte per member at +380 (1 = A, 2 = B, then the saved costumes; +84 is the chosen panel entry,
 +92 the entries, 12 bytes each). Costume B with its own body (Rick: Mirror Rick, code `rib`): the pick notes that
 byte (NotePick); sub_82331B50's slot is player + 2 * member (Solo fills member 1 with the same pick); a slot picked
-in B gets costume B's code in its loadPlayer command. That command finds its fighter in the chara master by code,
-and the master is a std::map by id (head node at +8; node id +12), one entry per id, so the text of the entry's code
-(an inline std::string) is rewritten to the code being loaded. Limit: two of the same fighter in different costumes
-load with whichever was loaded last.
+in B loads costume B's body. The loadPlayer command finds its fighter's id in the chara master by code (so it names
+the fighter's own code), and each slot then loads in sub_82487858 (loader, slot r4, ..., id r10): the master entry by
+id (sub_8247C638, a std::map by id: head node at +8, node id +12, one entry per id) is copied (sub_824724C8) and the
+slot loads the copy's code's body files. While a costume B slot is set up there, the entry's code text (an inline
+std::string) is costume B's (`rib`), then the fighter's own again, so two of the same fighter in different costumes
+load their own bodies (found with TTT2_DATAWATCH on that text: the reads were std::string::assign in the copy).
+P2 never has the same costume as P1 (the user's call, 2026-10-27): with the same fighter on both sides in the same
+costume, P2's slots load the other one (sub_82331B50).
 
 Downed Rick could not be hit (fixed 2026-10-25): sub_822FB4F8 (player r3) takes a per-fighter body pointer by id
 from two 64-entry tables (0x82DD0A68; 0x82DD0B68 in down states 12-13) without a bound, so Rick's 64 read the second

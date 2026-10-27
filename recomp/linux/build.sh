@@ -51,7 +51,7 @@ if [ ! -f "$FF/build/config.h" ]; then
 fi
 
 # 3. the game exe, with this project's runtime code (recomp/runtime/*.cpp) in the folder CMake globs
-cp "$HERE/../runtime/"*.cpp "$SRC/port/src/runtime/kernel/"
+cp "$HERE/../runtime/"*.cpp "$HERE/../runtime/"*.h "$SRC/port/src/runtime/kernel/"
 B="$SRC/port/build-linux"
 cmake -S "$SRC/port" -B "$B" -G Ninja --toolchain "$HERE/clang-cl-xwin.cmake" -DXWIN_SYSROOT="$XWIN" \
     -DCMAKE_BUILD_TYPE= -DTTT2_PPC_OPT_LEVEL=1 -DTTT2_LOCAL_SAVES=ON -DFFMPEG_SRC="$FF/FFmpeg-n7.1" -DFFMPEG_BUILD="$FF/build"

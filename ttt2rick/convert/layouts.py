@@ -14,6 +14,8 @@ in the top row above Eddy's; `face_panel_jen` above Lee's, right of Rick's), its
 (art.in_frame), and the right grille (`spacer_right`) that covered the cells stops after them (Layout.fit_spacer).
 recomp/runtime/rick_slot.cpp turns Marduk's labels into these while the game shows an added fighter.
 Writes <out>/files/key_<layout>.bin and key_<container>.bin (for ttt2rick.ttt2.overlay).
+TTT2_JEN=0: Rick's alone (Jennifer is not installed: the select grid would draw her picture in a cell that is not
+there; mod/install.py --no-jennifer).
 """
 import os
 import re
@@ -27,6 +29,9 @@ from ..ttt2.archive import Archives
 from ..ttt2.petexy import art, lmb
 from . import picture as picture_file
 from .fighters import ADDED
+
+if os.environ.get('TTT2_JEN') == '0':
+    ADDED = [f for f in ADDED if f.code != 'jen']
 
 LAYOUTS = 'data007.bin'
 # The select grids' icons (56 x 88): closer than Layout's general head-and-shoulders place for tall pictures, as each

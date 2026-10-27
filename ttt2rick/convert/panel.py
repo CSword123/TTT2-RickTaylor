@@ -59,6 +59,7 @@ def main(game, out):
     image = open(os.path.join(folder, 'tekken.img'), 'rb').read()
     bg, keys = backdrop(arc, image)
     template = xbox.read_nut(arc.read(keys[17]))         # Marduk's: the panel textures' format and fields
+    os.makedirs(out, exist_ok=True)
     for k, f in enumerate(ADDED):
         pic = picture.load(f.picture_path())
         pic = f.variants(pic)[0][0]                     # the clean picture
