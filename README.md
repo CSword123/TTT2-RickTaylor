@@ -3,7 +3,7 @@ This is a 99% vibe coded mod for Calikid/shihabal3amri's Tekken Tag Tournament 2
 What you NEED:
 1. Python installed in Windows or Linux  (make sure python is set in your system PATH to invoke them in powershell or command line in windows). Ensure you are able to install packages using pip as you need numpy and Pillow (read install.py for more info).
 2. ffmpeg (PowerShell: "winget install Gyan.FFmpeg")
-3. A Splatterhouse Xbox 360 USA ISO (please make an effort to use your own copy) and one of the aformentioned recomp's installed.
+3. A Splatterhouse Xbox 360 USA ISO (MD5: 2BBF7026113D3411D896F2F355148A9C) (please make an effort to use your own copy) and one of the aforementioned recomp's installed. 
    
 What you DO:
 1. run the installer script (install.py) in a command line
