@@ -8,7 +8,7 @@ What you NEED:
 What you DO:
 1. run the installer script (install.py) in a command line
 Example: $ python install.py
-If you need numpy or Pillow run "pip install -r requirements.txt"
+If you need numpy or Pillow run "python -m pip install -r requirements.txt"
 You can edit the resulting .ini file for things like "Rick only" and enabling original blood textures on Rick in the directory where your recomp is installed
 
 Rick and Jen are based on Marduk's moveset with Splatterhouse 2010 moves sprinkled in. f+2,1,1, f+2,2,1,2 and b+2,1,1+2 are based on Rick's 2010 melee attacks among other animations.
