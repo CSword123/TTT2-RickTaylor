@@ -32,8 +32,16 @@ python install.py --recomp "C:\Games\TTT2 Recomp" --iso "D:\Splatterhouse (US) (
 Then start the game as usual. Rick is in the top row of the character select, right of the last fighter, and
 Jennifer beside him.
 
-**Linux (Steam / Proton):** set the game's launch options to `WINEDLLOVERRIDES="winmm=n,b" %command%`, so Wine
-loads the mod's `winmm.dll` instead of its own.
+**Linux (Steam / Proton):** the recomp (0.2.0 and later) needs Microsoft's 64-bit `d3dcompiler_47.dll` next to its
+exe: Wine's own shader compiler fails some of its shaders and the fighters' bodies are not drawn. It is not in this
+zip; copy it from another Windows game that ships it. Then set the game's launch options to
+
+```
+WINEDLLOVERRIDES="d3dcompiler_47=n,b;winmm=n,b" %command%
+```
+
+so Wine loads that `d3dcompiler_47.dll` and the mod's `winmm.dll` instead of its own. The override only picks which
+copy Wine loads: the DLLs themselves must be in the exe's folder.
 
 ## Settings
 
