@@ -10,6 +10,9 @@ What you DO:
 Example: $ python install.py
 If you need numpy or Pillow run "python -m pip install -r requirements.txt"
 You can edit the resulting .ini file for things like "Rick only" and enabling original blood textures on Rick in the directory where your recomp is installed
+2. Linux (Steam/Proton) only: put Microsoft's 64-bit d3dcompiler_47.dll (copy it from another Windows game that has one) next to the recomp's exe, otherwise the fighters' bodies do not show up. Then set the game's Steam launch options to:
+WINEDLLOVERRIDES="d3dcompiler_47=n,b;winmm=n,b" %command%
+The launch option only tells Wine to use those DLLs, they still have to be in the exe's folder.
 
 Rick and Jen are based on Marduk's moveset with Splatterhouse 2010 moves sprinkled in. f+2,1,1, f+2,2,1,2 and b+2,1,1+2 are based on Rick's 2010 melee attacks among other animations.
 Customization for Rick is a goal but currently WIP.
